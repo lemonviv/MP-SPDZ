@@ -141,6 +141,14 @@ bmr-clean:
 bankers-bonus-client.x: ExternalIO/bankers-bonus-client.cpp $(COMMON)
 	$(CXX) $(CFLAGS) -o $@ $^ $(LDLIBS)
 
+falcon-lr-client-test.x: ExternalIO/falcon-lr-client-test.cpp $(COMMON)
+	$(CXX) $(CFLAGS) -o $@ $^ $(LDLIBS)
+
+lib: $(LIB)
+
+$(LIB): $(COMMON)
+	$(AR) -crs $@ $^
+
 simple-offline.x: $(FHEOFFLINE)
 pairwise-offline.x: $(FHEOFFLINE)
 cnc-offline.x: $(FHEOFFLINE)
@@ -233,7 +241,7 @@ mpir-global: mpir-setup
 
 mpir: mpir-setup
 	cd mpir; \
-	./configure --enable-cxx --prefix=$(CURDIR)/local
+	./configure --enable-cxx --enable-gmpcompat --prefix=$(CURDIR)/local
 	$(MAKE) -C mpir install
 	-echo MY_CFLAGS += -I./local/include >> CONFIG.mine
 	-echo MY_LDLIBS += -Wl,-rpath -Wl,./local/lib -L./local/lib >> CONFIG.mine
