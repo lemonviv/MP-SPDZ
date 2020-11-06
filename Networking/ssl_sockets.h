@@ -33,6 +33,19 @@ public:
         use_private_key_file(key_file, pem);
         add_verify_path(PREP_DIR);
     }
+    ssl_ctx(string prep_dir, string me) :
+        boost::asio::ssl::context(boost::asio::ssl::context::tlsv12)
+    {
+      string prefix = prep_dir + me;
+      string cert_file = prefix + ".pem";
+      string key_file = prefix + ".key";
+      check_ssl_file(cert_file);
+      check_ssl_file(key_file);
+
+      use_certificate_file(cert_file, pem);
+      use_private_key_file(key_file, pem);
+      add_verify_path(prep_dir);
+    }
 };
 
 class ssl_socket : public boost::asio::ssl::stream<boost::asio::ip::tcp::socket>
