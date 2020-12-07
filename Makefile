@@ -144,6 +144,9 @@ bankers-bonus-client.x: ExternalIO/bankers-bonus-client.cpp $(COMMON)
 falcon-lr-client-test.x: ExternalIO/falcon-lr-client-test.cpp $(COMMON)
 	$(CXX) $(CFLAGS) -o $@ $^ $(LDLIBS)
 
+falcon-lr-func-test.x: ExternalIO/falcon-lr-func-test.cpp $(COMMON)
+	$(CXX) $(CFLAGS) -o $@ $^ $(LDLIBS)
+
 lib: $(LIB)
 
 $(LIB): $(COMMON)
