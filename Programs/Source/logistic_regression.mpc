@@ -63,7 +63,7 @@ def logistic_func(client_inputs):
         @for_range(MAX_NUM_CLIENTS)
         def inner(i):
             temp[0] = temp[0] + client_inputs[i][j]
-        # print_ln("The temp[0] is %s", temp[0].reveal())
+        print_ln("The temp[0] is %s", temp[0].reveal())
         result[j] = ml.sigmoid(temp[0])
         print_ln("The result[j] sigmoid function is %s", result[j].reveal())
     return result
