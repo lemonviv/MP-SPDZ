@@ -9,3 +9,4 @@ make -j 8 falcon-lr-client-test.x
 #make -j 8 vfl-decision-tree-test.x
 #./Setup.x 3 128 128
 Scripts/setup-online.sh 3 128 128
+Scripts/setup-ssl.sh 3 128 128

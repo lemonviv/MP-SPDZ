@@ -174,6 +174,7 @@ void BaseInstruction::parse_operands(istream& s, int pos, int file_pos)
       case NPLAYERS:
       case THRESHOLD:
       case PLAYERID:
+      case CLOSECLIENTCONNECTION:
         r[0]=get_int(s);
         break;
       // instructions with 3 registers + 1 integer operand
@@ -358,8 +359,6 @@ void BaseInstruction::parse_operands(istream& s, int pos, int file_pos)
         r[1] = get_int(s);
         get_vector(num_var_args, start, s);
         break;
-      case CONNECTIPV4:
-        throw runtime_error("parties as clients not supported any more");
       case READCLIENTPUBLICKEY:
       case INITSECURESOCKET:
       case RESPSECURESOCKET:
@@ -1647,6 +1646,9 @@ inline void Instruction::execute(Processor<sint, sgf2n>& Proc) const
         Proc.write_Ci(r[0], client_handle);
         break;
       }
+      case CLOSECLIENTCONNECTION:
+        Proc.external_clients.close_connection(Proc.read_Ci(r[0]));
+        break;
       case READSOCKETINT:
         Proc.read_socket_ints(Proc.read_Ci(r[0]), start);
         break;

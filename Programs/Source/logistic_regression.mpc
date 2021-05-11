@@ -47,6 +47,10 @@ def accept_client():
     # print_ln("The client socket id is %s", client_socket_id)
     return client_socket_id
 
+def close_connections(number_clients):
+    @for_range(number_clients)
+    def _(i):
+        closeclientconnection(i)
 
 ### Receive private input from client_socket_id
 def client_input(client_socket_id):
@@ -177,6 +181,8 @@ def main():
         client_values.delete()
         seen.delete()
         result.delete()
+
+        close_connections(MAX_NUM_CLIENTS)
 
         return True
 

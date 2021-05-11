@@ -92,19 +92,14 @@ public:
   {
     auto& server_job = *(ServerJob*)(job);
     server_job.server.wait_for_client_id(server_job.socket, server_job.dest);
+    delete &server_job;
+    pthread_detach(pthread_self());
     return 0;
   }
 };
 
 ServerSocket::~ServerSocket()
 {
-  for (auto& job : jobs)
-    {
-      pthread_cancel(job->thread);
-      pthread_join(job->thread, 0);
-      delete job;
-    }
-
   pthread_cancel(thread);
   pthread_join(thread, 0);
   if (close(main_socket)) { error("close(main_socket"); };
@@ -150,8 +145,8 @@ void ServerSocket::accept_clients()
               inet_ntoa(conn.sin_addr), ntohs(conn.sin_port));
 #endif
           // defer to thread
-          jobs.push_back(new ServerJob(*this, consocket, dest));
-          pthread_create(&jobs.back()->thread, 0, ServerJob::run, jobs.back());
+          auto job = (new ServerJob(*this, consocket, dest));
+          pthread_create(&job->thread, 0, ServerJob::run, job);
         }
 
 #ifdef __APPLE__
@@ -229,4 +224,9 @@ int AnonymousServerSocket::get_connection_socket(int& client_id)
   int client_socket = clients[client_id];
   data_signal.unlock();
   return client_socket;
+}
+
+void AnonymousServerSocket::remove_client(int client_id)
+{
+  clients.erase(client_id);
 }

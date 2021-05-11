@@ -1132,6 +1132,14 @@ class acceptclientconnection(base.IOInstruction):
     code = base.opcodes['ACCEPTCLIENTCONNECTION']
     arg_format = ['ciw', 'int']
 
+class closeclientconnection(base.IOInstruction):
+    """ Close connection to client.
+    :param: client id (regint)
+    """
+    __slots__ = []
+    code = base.opcodes['CLOSECLIENTCONNECTION']
+    arg_format = ['ci']
+
 class writesharestofile(base.IOInstruction):
     """Write shares to a file"""
     __slots__ = []
