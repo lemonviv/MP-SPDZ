@@ -33,7 +33,7 @@ sfix.set_precision(FIXED_F, FIXED_K)
 cfix.set_precision(FIXED_F, FIXED_K)
 
 ### set necessary parameters
-ARRAY_SIZE = 32
+ARRAY_SIZE = 8
 PORT_NUM = 14000
 MAX_NUM_CLIENTS = 3
 MAX_NBITS = 14
@@ -44,6 +44,7 @@ NULL = -2147483648
 def accept_client():
     client_socket_id = regint()
     acceptclientconnection(client_socket_id, PORT_NUM)
+    # print_ln("The client socket id is %s", client_socket_id)
     return client_socket_id
 
 
@@ -63,9 +64,10 @@ def logistic_func(client_inputs):
         @for_range(MAX_NUM_CLIENTS)
         def inner(i):
             temp[0] = temp[0] + client_inputs[i][j]
-        print_ln("The temp[0] is %s", temp[0].reveal())
+        #print_ln("The temp[0] is %s", temp[0].reveal())
         result[j] = ml.sigmoid(temp[0])
         print_ln("The result[j] sigmoid function is %s", result[j].reveal())
+    temp.delete()
     return result
 
 
@@ -79,7 +81,7 @@ def write_result_to_clients(sockets, number_clients, result):
     @for_range(ARRAY_SIZE)
     def _(i):
         sint_result[i] = result[i].v
-        print_ln('sint_result[%s] = %s', i, sint_result[i].reveal())
+        #print_ln('sint_result[%s] = %s', i, sint_result[i].reveal())
 
     # split sint_result to number_clients parts and send each part to each client
     sint_result_matrix = sint.Matrix(number_clients, ARRAY_SIZE)
@@ -112,6 +114,9 @@ def write_result_to_clients(sockets, number_clients, result):
         # print_ln('socket[%s] = %s', i, sockets[i])
         sint.write_shares_to_socket(sockets[i], sint_result_matrix[i])
 
+    sint_result.delete()
+    sint_result_matrix.delete()
+    temp_sum.delete()
 
 def main():
     """
@@ -132,7 +137,7 @@ def main():
         client_sockets = Array(MAX_NUM_CLIENTS, regint)
 
         # Number of clients
-        number_clients = MemValue(regint(0))
+        # number_clients = MemValue(regint(0))
 
         # Clients secret inputs
         client_values = sfix.Matrix(MAX_NUM_CLIENTS, ARRAY_SIZE)
@@ -167,6 +172,11 @@ def main():
 
         # step 4: write values back to the clients
         write_result_to_clients(client_sockets, MAX_NUM_CLIENTS, result)
+
+        client_sockets.delete()
+        client_values.delete()
+        seen.delete()
+        result.delete()
 
         return True
 
