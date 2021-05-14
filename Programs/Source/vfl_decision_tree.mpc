@@ -26,7 +26,7 @@ import ml
 
 # default program parameters
 MAX_NBITS = 14
-FIXED_F = 8
+FIXED_F = 16
 FIXED_K = 31
 sfix.set_precision(FIXED_F, FIXED_K)
 cfix.set_precision(FIXED_F, FIXED_K)
@@ -47,6 +47,10 @@ def accept_client():
     acceptclientconnection(client_socket_id, PORT_NUM)
     return client_socket_id
 
+def close_connections(number_clients):
+    @for_range(number_clients)
+    def _(i):
+        closeclientconnection(i)
 
 # receive client 0's public parameters
 def client_public_parameters(client_socket_id):
@@ -686,6 +690,9 @@ def main():
             print_ln('Finish softmax computation')
 
         print_ln('comp_id = %s finished', comp_id)
+
+        close_connections(MAX_NUM_CLIENTS)
+
         return True
 
 main()
