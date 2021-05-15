@@ -649,10 +649,14 @@ def main():
             print_ln('Finish step 5')
 
             # step 6: Organize the result and send back to the clients
-            write_result_to_clients(client_sockets, MAX_NUM_CLIENTS, best_split_index, best_left_impurity, best_right_impurity)
-            print_ln('best_split_index = %s', best_split_index.reveal())
-            print_ln('best_left_impurity = %s', best_left_impurity.reveal())
-            print_ln('best_right_impurity = %s', best_right_impurity.reveal())
+            #write_result_to_clients(client_sockets, MAX_NUM_CLIENTS, best_split_index, best_left_impurity, best_right_impurity)
+            #print_ln('best_split_index = %s', best_split_index.reveal())
+            #print_ln('best_left_impurity = %s', best_left_impurity.reveal())
+            #print_ln('best_right_impurity = %s', best_right_impurity.reveal())
+            ### Change to write public values
+            write_result_to_clients_public(client_sockets, MAX_NUM_CLIENTS, best_split_index)
+            write_result_to_clients_public(client_sockets, MAX_NUM_CLIENTS, best_left_impurity)
+            write_result_to_clients_public(client_sockets, MAX_NUM_CLIENTS, best_right_impurity)
 
             print_ln('Finish step 6')
 
