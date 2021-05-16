@@ -54,9 +54,15 @@ def close_connections(number_clients):
 
 # receive client 0's public parameters
 def client_public_parameters(client_socket_id):
-    input_parameters = Array(4, cint)
-    input_parameters = cint.read_from_socket(client_socket_id, 4)
-    return input_parameters[0], input_parameters[1], input_parameters[2], input_parameters[3]
+    tree_type = Array(1, cint)
+    global_split_num = Array(1, cint)
+    class_num = Array(1, cint)
+    used_class_num = Array(1, cint)
+    tree_type[0] = cint.read_from_socket(client_socket_id, 1)
+    global_split_num[0] = cint.read_from_socket(client_socket_id, 1)
+    class_num[0] = cint.read_from_socket(client_socket_id, 1)
+    used_class_num[0] = cint.read_from_socket(client_socket_id, 1)
+    return tree_type[0], global_split_num[0], class_num[0], used_class_num[0]
 
 
 # receive computation id
