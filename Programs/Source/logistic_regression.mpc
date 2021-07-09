@@ -33,7 +33,7 @@ sfix.set_precision(FIXED_F, FIXED_K)
 cfix.set_precision(FIXED_F, FIXED_K)
 
 ### set necessary parameters
-ARRAY_SIZE = 8
+MAX_ARRAY_SIZE = 100000
 PORT_NUM = 14000
 MAX_NUM_CLIENTS = 3
 MAX_NBITS = 14
@@ -53,16 +53,29 @@ def close_connections(number_clients):
         closeclientconnection(i)
 
 ### Receive private input from client_socket_id
-def client_input(client_socket_id):
-    client_inputs = sint.receive_from_client(ARRAY_SIZE, client_socket_id)
+def client_input(client_sockets, num_clients, array_size):
+    client_inputs = sfix.Matrix(MAX_NUM_CLIENTS, MAX_ARRAY_SIZE)
+    tmp_array = Array(1, sint)
+    @for_range(num_clients)
+    def _(i):
+        @for_range(array_size)
+        def _(j):
+            tmp_array = sint.receive_from_client(1, client_sockets[i])
+            client_inputs[i][j] = sfix._new(tmp_array[0])
     return client_inputs
+
+### receive client 0's public parameters
+def client_public_parameters(client_socket_id):
+    array_size_arr = Array(1, cint)
+    array_size_arr[0] = cint.read_from_socket(client_socket_id, 1)
+    return array_size_arr[0]
 
 
 ### Compute the logistic function given the received secret shares
-def logistic_func(client_inputs):
-    result = Array(ARRAY_SIZE, sfix)
+def logistic_func(client_inputs, array_size):
+    result = Array(MAX_ARRAY_SIZE, sfix)
     temp = Array(1, sfix)
-    @for_range(ARRAY_SIZE)
+    @for_range(array_size)
     def _(j):
         temp[0] = 0
         @for_range(MAX_NUM_CLIENTS)
@@ -75,22 +88,22 @@ def logistic_func(client_inputs):
     return result
 
 
-def write_result_to_clients(sockets, number_clients, result):
+def write_result_to_clients(sockets, number_clients, result, array_size):
     """
         Send secret share of result to all clients.
         (should split the result array into number_clients shares, and send each share to each client)
     """
 
-    sint_result = Array(ARRAY_SIZE, sint)
-    @for_range(ARRAY_SIZE)
+    sint_result = Array(MAX_ARRAY_SIZE, sint)
+    @for_range(array_size)
     def _(i):
         sint_result[i] = result[i].v
         #print_ln('sint_result[%s] = %s', i, sint_result[i].reveal())
 
     # split sint_result to number_clients parts and send each part to each client
-    sint_result_matrix = sint.Matrix(number_clients, ARRAY_SIZE)
+    sint_result_matrix = sint.Matrix(number_clients, MAX_ARRAY_SIZE)
     temp_sum = Array(1, sint)
-    @for_range(ARRAY_SIZE)
+    @for_range(array_size)
     def outer_loop(j):
         temp_sum[0] = 0
         @for_range(number_clients)
@@ -144,7 +157,7 @@ def main():
         # number_clients = MemValue(regint(0))
 
         # Clients secret inputs
-        client_values = sfix.Matrix(MAX_NUM_CLIENTS, ARRAY_SIZE)
+        client_values = sfix.Matrix(MAX_NUM_CLIENTS, MAX_ARRAY_SIZE)
 
         # Keep track of received inputs
         seen = Array(MAX_NUM_CLIENTS, regint)
@@ -162,20 +175,25 @@ def main():
             seen[client_id] = 1
             return sum(seen) < MAX_NUM_CLIENTS
 
-        # step 2: receive each client's private input
+        # step 2: receive a public array_size and each client's private input
+        array_size = client_public_parameters(client_sockets[0])
+        client_values = client_input(client_sockets, MAX_NUM_CLIENTS, array_size)
+
+        """
         @for_range(MAX_NUM_CLIENTS)
         def _(client_id):
-            inputs = Array(ARRAY_SIZE, sint)
-            inputs = client_input(client_id)
-            for j in range(ARRAY_SIZE):
+            inputs = Array(MAX_ARRAY_SIZE, sint)
+            inputs = client_input(client_id, array_size)
+            for j in range(array_size):
                 client_values[client_id][j] = sfix._new(inputs[j])
+        """
 
         # step 3: compute the logistic function
-        result = sfix.Array(ARRAY_SIZE)
-        result = logistic_func(client_values)
+        result = sfix.Array(MAX_ARRAY_SIZE)
+        result = logistic_func(client_values, array_size)
 
         # step 4: write values back to the clients
-        write_result_to_clients(client_sockets, MAX_NUM_CLIENTS, result)
+        write_result_to_clients(client_sockets, MAX_NUM_CLIENTS, result, array_size)
 
         client_sockets.delete()
         client_values.delete()
