@@ -40,6 +40,7 @@ OVERFLOW_THRESHOLD = 0.0001
 PRUNE_SAMPLE_NUM = 5
 PRUNE_VARIANCE_THRESHOLD = 0.0001
 MAX_SAMPLE_NUM = 100000
+MAX_TREE_NUM = 64
 
 # accept a client's connection
 def accept_client():
@@ -478,6 +479,69 @@ def compute_softmax_label(input_label_vector, sample_size, classes_num):
     print_ln('Finish computation of softmax label')
     return softmax_label_vector
 
+
+###########    RF Specific Computations   ###########
+
+def clients_rf_label_input(client_sockets, number_clients, vector_size):
+    forest_label_shares = Array(MAX_TREE_NUM * MAX_SAMPLE_NUM, sfix)
+    tmp_array = Array(1, sint)
+    @for_range(vector_size)
+    def _(j):
+        forest_label_shares[j] = 0.0
+
+    @for_range(number_clients)
+    def _(i):
+        @for_range(vector_size)
+        def _(j):
+            tmp_array = sint.receive_from_client(1, client_sockets[i])
+            forest_label_shares[j] = forest_label_shares[j] + sfix._new(tmp_array[0])
+
+    print_ln('Finish rf tree label input')
+    return forest_label_shares
+
+# find mode
+def find_mode(tree_labels, tree_size):
+    class_counts = Array(MAX_CLASSES_NUM, sint)
+    @for_range(MAX_CLASSES_NUM)
+    def _(i):
+        class_counts[i] = 0
+
+    @for_range(tree_size)
+    def _(i):
+        @for_range(MAX_CLASSES_NUM)
+        def _(j):
+            @if_(mpc_math.abs_fx(tree_labels[i] - j).reveal() < OVERFLOW_THRESHOLD)
+            def _():
+                class_counts[j] = class_counts[j] + 1
+
+    majority = Array(1, sfix)
+    majority[0] = -1
+
+    @for_range(MAX_CLASSES_NUM)
+    def _(i):
+        is_new_max = majority[0] < class_counts[i]
+        @if_((is_new_max == 1).reveal())
+        def _():
+            majority[0] = i
+
+    return majority
+
+
+def compute_label_mode(forest_label_shares, tree_size, sample_size):
+    forest_label_mode = Array(MAX_SAMPLE_NUM, sfix)
+    @for_range(sample_size)
+    def _(i):
+        tree_labels = Array(MAX_TREE_NUM, sfix)
+        @for_range(tree_size)
+        def _(j):
+            tree_labels[j] = forest_label_shares[j * sample_size + i]
+        # find the mode
+        majority = Array(1, sfix)
+        majority = find_mode(tree_labels, tree_size)
+        forest_label_mode[i] = majority[0]
+    return forest_label_mode
+
+
 def write_secret_shares_to_clients(sockets, number_clients, secret_vector, vector_size):
 
     # Send share of result to all clients. However, in this way, every client receives the final result, which is not desirable,
@@ -703,6 +767,30 @@ def main():
             write_secret_shares_to_clients(client_sockets, MAX_NUM_CLIENTS, softmax_label_vector, sample_size * classes_num)
 
             print_ln('Finish softmax computation')
+
+        # compute random forest label mode of prediction of each sample
+        @if_(comp_id == 5)
+        def _():
+            # step 1: read public parameters
+            tree_size_arr = Array(1, cint)
+            sample_size_arr = Array(1, cint)
+            tree_size_arr = cint.read_from_socket(client_sockets[0], 1)
+            sample_size_arr = cint.read_from_socket(client_sockets[0], 1)
+            tree_size = tree_size_arr[0]
+            sample_size = sample_size_arr[0]
+
+            # step 2: read forest label shares with tree_size * sample_size
+            forest_label_shares = Array(MAX_TREE_NUM * MAX_SAMPLE_NUM, sfix)
+            forest_label_shares = clients_rf_label_input(client_sockets, MAX_NUM_CLIENTS, tree_size * sample_size)
+
+            # step 3: compute label mode for each sample
+            forest_label_mode = Array(MAX_SAMPLE_NUM, sfix)
+            forest_label_mode = compute_label_mode(forest_label_shares, tree_size, sample_size)
+
+            # step 4: split into shares and write back to the clients
+            write_secret_shares_to_clients(client_sockets, MAX_NUM_CLIENTS, forest_label_mode, sample_size)
+
+            print_ln('Finish random forest label mode computation')
 
         print_ln('comp_id = %s finished', comp_id)
 
