@@ -29,7 +29,6 @@ public:
         string key_file = prefix + ".key";
         check_ssl_file(cert_file);
         check_ssl_file(key_file);
-
         use_certificate_file(cert_file, pem);
         use_private_key_file(key_file, pem);
         add_verify_path(PREP_DIR);

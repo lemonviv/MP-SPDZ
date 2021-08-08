@@ -734,7 +734,13 @@ def main():
         @if_(comp_id == 3)
         def _():
             # step 1: read public parameters
-            sample_size, classes_num = client_gbdt_public_parameters(client_sockets[0])
+            sample_size_arr = Array(1, cint)
+            classes_num_arr = Array(1, cint)
+            sample_size_arr = cint.read_from_socket(client_sockets[0], 1)
+            classes_num_arr = cint.read_from_socket(client_sockets[0], 1)
+            sample_size = sample_size_arr[0]
+            classes_num = classes_num_arr[0]
+            # sample_size, classes_num = client_gbdt_public_parameters(client_sockets[0])
 
             # step 2: read label shares with training sample size
             input_label_vector = Array(MAX_SAMPLE_NUM, sfix)
@@ -753,7 +759,13 @@ def main():
         @if_(comp_id == 4)
         def _():
             # step 1: read public parameters
-            sample_size, classes_num = client_gbdt_public_parameters(client_sockets[0])
+            sample_size_arr = Array(1, cint)
+            classes_num_arr = Array(1, cint)
+            sample_size_arr = cint.read_from_socket(client_sockets[0], 1)
+            classes_num_arr = cint.read_from_socket(client_sockets[0], 1)
+            sample_size = sample_size_arr[0]
+            classes_num = classes_num_arr[0]
+            # sample_size, classes_num = client_gbdt_public_parameters(client_sockets[0])
 
             # step 2: read label shares with training sample size * classes_num
             input_label_vector = Array(MAX_SAMPLE_NUM * MAX_CLASSES_NUM, sfix)
