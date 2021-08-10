@@ -39,8 +39,9 @@ MAX_CLASSES_NUM = 5
 OVERFLOW_THRESHOLD = 0.0001
 PRUNE_SAMPLE_NUM = 5
 PRUNE_VARIANCE_THRESHOLD = 0.0001
-MAX_SAMPLE_NUM = 100000
+MAX_SAMPLE_NUM = 50000
 MAX_TREE_NUM = 64
+MAX_TREE_NODE_NUM = 1024
 
 # accept a client's connection
 def accept_client():
@@ -479,6 +480,82 @@ def compute_softmax_label(input_label_vector, sample_size, classes_num):
     print_ln('Finish computation of softmax label')
     return softmax_label_vector
 
+### Compute the expit function given the received secret shares
+def compute_expit(client_inputs, sample_size, classes_num):
+    result = Array(MAX_SAMPLE_NUM * MAX_CLASSES_NUM, sfix)
+    @for_range(sample_size * classes_num)
+    def _(i):
+        result[i] = ml.sigmoid(client_inputs[i])
+        # print_ln("The result[i] sigmoid function is %s", result[i].reveal())
+    print_ln("The result[0] sigmoid function is %s", result[0].reveal())
+    return result
+
+### Compute the terminal regions new labels given the received secret shares
+def update_terminal_region(input_vector, sample_size, leaf_node_num):
+    updated_leaf_labels = Array(MAX_TREE_NODE_NUM, sfix)
+    residuals = Array(MAX_SAMPLE_NUM, sfix)
+    ground_truth_labels = Array(MAX_SAMPLE_NUM, sfix)
+    pre_predictions = Array(MAX_SAMPLE_NUM, sfix)
+    leaf_labels = Array(MAX_TREE_NODE_NUM, sfix)
+    # copy inputs
+    @for_range(3 * sample_size + leaf_node_num)
+    def _(i):
+        @if_e(i < sample_size)
+        def _():
+            residuals[i] = input_vector[i]
+        @else_
+        def _():
+            @if_e(i < 2 * sample_size)
+            def _():
+                ground_truth_labels[i - sample_size] = input_vector[i]
+            @else_
+            def _():
+                @if_e(i < 3 * sample_size)
+                def _():
+                    pre_predictions[i - 2 * sample_size] = input_vector[i]
+                @else_
+                def _():
+                    leaf_labels[i - 3 * sample_size] = input_vector[i]
+
+    # compute (y - residual) * (1 - (y - residual)) vector
+    denominator_vector = Array(MAX_SAMPLE_NUM, sfix)
+    @for_range(sample_size)
+    def _(i):
+        denominator_vector[i] = (ground_truth_labels[i] - residuals[i]) * (1 - ground_truth_labels[i] + residuals[i])
+
+    # compute the new labels
+    @for_range(leaf_node_num)
+    def _(l):
+        iv = Array(MAX_SAMPLE_NUM, sfix)
+        @for_range(sample_size)
+        def _(i):
+            @if_e(mpc_math.abs_fx(pre_predictions[i] - leaf_labels[l]).reveal() < OVERFLOW_THRESHOLD)
+            def _():
+                iv[i] = 1.0
+            @else_
+            def _():
+                iv[i] = 0.0
+        nominator = Array(1, sfix)
+        nominator[0] = 0.0
+        denominator = Array(1, sfix)
+        denominator[0] = 0.0
+        @for_range(sample_size)
+        def _(i):
+            nominator[0] = nominator[0] + (residuals[i] * iv[i])
+            denominator[0] = denominator[0] + (denominator_vector[i] * iv[i])
+
+        @if_e(denominator[0].reveal() < (OVERFLOW_THRESHOLD * OVERFLOW_THRESHOLD))
+        def _():
+            updated_leaf_labels[l] = 0.0
+        @else_
+        def _():
+            updated_leaf_labels[l] = (nominator[0] / denominator[0])
+
+        print_ln("nominator[0] = %s", nominator[0].reveal())
+        print_ln("denominator[0] = %s", denominator[0].reveal())
+        print_ln("updated_leaf_labels[%s] = %s", l, updated_leaf_labels[l].reveal())
+    return updated_leaf_labels
+
 
 ###########    RF Specific Computations   ###########
 
@@ -803,6 +880,48 @@ def main():
             write_secret_shares_to_clients(client_sockets, MAX_NUM_CLIENTS, forest_label_mode, sample_size)
 
             print_ln('Finish random forest label mode computation')
+
+        # compute the gbdt expit function given gbdt raw_prediction of each sample
+        @if_(comp_id == 6)
+        def _():
+            # step 1: read public parameters
+            sample_size_arr = Array(1, cint)
+            classes_num_arr = Array(1, cint)
+            sample_size_arr = cint.read_from_socket(client_sockets[0], 1)
+            classes_num_arr = cint.read_from_socket(client_sockets[0], 1)
+            sample_size = sample_size_arr[0]
+            classes_num = classes_num_arr[0]
+            # step 2: read raw_prediction shares with sample_size * class_num
+            input_label_vector = Array(MAX_SAMPLE_NUM * MAX_CLASSES_NUM, sfix)
+            input_label_vector = clients_gbdt_label_input(client_sockets, MAX_NUM_CLIENTS, sample_size * classes_num)
+            # step 3: compute expit
+            expit_raw_predictions_vector = Array(MAX_SAMPLE_NUM * MAX_CLASSES_NUM, sfix)
+            expit_raw_predictions_vector = compute_expit(input_label_vector, sample_size, classes_num)
+            # step 4: split into shares and write back to the clients
+            write_secret_shares_to_clients(client_sockets, MAX_NUM_CLIENTS, expit_raw_predictions_vector, sample_size * classes_num)
+
+            print_ln('Finish compute expit raw predictions')
+
+        # compute the updated terminal region leaf labels
+        @if_(comp_id == 7)
+        def _():
+            # step 1: read public parameters
+            sample_size_arr = Array(1, cint)
+            leaf_node_num_arr = Array(1, cint)
+            sample_size_arr = cint.read_from_socket(client_sockets[0], 1)
+            leaf_node_num_arr = cint.read_from_socket(client_sockets[0], 1)
+            sample_size = sample_size_arr[0]
+            leaf_node_num = leaf_node_num_arr[0]
+            # step 2: read shares with 3 * sample_size + leaf_node_num
+            input_vector = Array(MAX_SAMPLE_NUM * 3 + MAX_TREE_NODE_NUM, sfix)
+            input_vector = clients_gbdt_label_input(client_sockets, MAX_NUM_CLIENTS, 3 * sample_size + leaf_node_num)
+            # step 3: compute updated terminal region labels
+            updated_leaf_labels = Array(MAX_TREE_NODE_NUM, sfix)
+            updated_leaf_labels = update_terminal_region(input_vector, sample_size, leaf_node_num)
+            # step 4: split into shares and write back to the clients
+            write_secret_shares_to_clients(client_sockets, MAX_NUM_CLIENTS, updated_leaf_labels, leaf_node_num)
+
+            print_ln('Finish compute expit raw predictions')
 
         print_ln('comp_id = %s finished', comp_id)
 
