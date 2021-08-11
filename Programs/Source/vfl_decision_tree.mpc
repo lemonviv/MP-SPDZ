@@ -491,7 +491,7 @@ def compute_expit(client_inputs, sample_size, classes_num):
     return result
 
 ### Compute the terminal regions new labels given the received secret shares
-def update_terminal_region(input_vector, sample_size, leaf_node_num):
+def update_terminal_region(input_vector, sample_size, leaf_node_num, class_num):
     updated_leaf_labels = Array(MAX_TREE_NODE_NUM, sfix)
     residuals = Array(MAX_SAMPLE_NUM, sfix)
     ground_truth_labels = Array(MAX_SAMPLE_NUM, sfix)
@@ -543,6 +543,14 @@ def update_terminal_region(input_vector, sample_size, leaf_node_num):
         def _(i):
             nominator[0] = nominator[0] + (residuals[i] * iv[i])
             denominator[0] = denominator[0] + (denominator_vector[i] * iv[i])
+
+        # for multi-class classification estimators
+        @if_(class_num > 2)
+        def _():
+            sfix_class_num = Array(1, sfix)
+            sfix_class_num[0] = class_num
+            nominator[0] = nominator[0] * (sfix_class_num[0] - 1)
+            nominator[0] = nominator[0] / sfix_class_num[0]
 
         @if_e(denominator[0].reveal() < (OVERFLOW_THRESHOLD * OVERFLOW_THRESHOLD))
         def _():
@@ -908,16 +916,19 @@ def main():
             # step 1: read public parameters
             sample_size_arr = Array(1, cint)
             leaf_node_num_arr = Array(1, cint)
+            class_num_arr = Array(1, cint)
             sample_size_arr = cint.read_from_socket(client_sockets[0], 1)
             leaf_node_num_arr = cint.read_from_socket(client_sockets[0], 1)
+            class_num_arr = cint.read_from_socket(client_sockets[0], 1)
             sample_size = sample_size_arr[0]
             leaf_node_num = leaf_node_num_arr[0]
+            class_num = class_num_arr[0]
             # step 2: read shares with 3 * sample_size + leaf_node_num
             input_vector = Array(MAX_SAMPLE_NUM * 3 + MAX_TREE_NODE_NUM, sfix)
             input_vector = clients_gbdt_label_input(client_sockets, MAX_NUM_CLIENTS, 3 * sample_size + leaf_node_num)
             # step 3: compute updated terminal region labels
             updated_leaf_labels = Array(MAX_TREE_NODE_NUM, sfix)
-            updated_leaf_labels = update_terminal_region(input_vector, sample_size, leaf_node_num)
+            updated_leaf_labels = update_terminal_region(input_vector, sample_size, leaf_node_num, class_num)
             # step 4: split into shares and write back to the clients
             write_secret_shares_to_clients(client_sockets, MAX_NUM_CLIENTS, updated_leaf_labels, leaf_node_num)
 
