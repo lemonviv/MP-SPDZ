@@ -5,18 +5,23 @@
 
 trigger:
 - master
+- cnn
 
 pool:
-  vmImage: 'ubuntu-latest'
+  vmImage: 'ubuntu-18.04'
 
 steps:
   - script: |
-      bash -c "sudo apt-get install libsodium-dev libntl-dev yasm texinfo libboost-dev libboost-thread-dev python3-gmpy2 libcrypto++-dev python-networkx python3-networkx python3-sphinx"
+      bash -c "sudo apt-get update && sudo apt-get install libsodium-dev libntl-dev yasm texinfo libboost-dev libboost-thread-dev python3-gmpy2 python3-networkx python3-sphinx"
   - script: |
       make mpir
   - script:
       echo USE_NTL=1 >> CONFIG.mine
-  - script: |
+  - script:
+      echo MY_CFLAGS += -DFEWER_PRIMES >> CONFIG.mine
+  - script:
+      echo MY_CFLAGS += -DFEWER_RINGS >> CONFIG.mine
+  - script:
       make
   - script:
       Scripts/setup-ssl.sh 4

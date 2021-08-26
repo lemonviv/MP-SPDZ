@@ -18,6 +18,8 @@ from Compiler import program
 ### MUST also be changed. (+ the documentation)
 ###
 opcodes = dict(
+    # Emulation
+    CISC = 0,
     # Load/store
     LDI = 0x1,
     LDSI = 0x2,
@@ -87,6 +89,7 @@ opcodes = dict(
     LEGENDREC = 0x38,
     DIGESTC = 0x39,
     INV2M = 0x3a,
+    FLOORDIVC = 0x3b,
     GMULBITC = 0x136,
     GMULBITM = 0x137,
     # Open
@@ -98,6 +101,7 @@ opcodes = dict(
     MATMULS = 0xAA,
     MATMULSM = 0xAB,
     CONV2DS = 0xAC,
+    CHECK = 0xAF,
     # Data access
     TRIPLE = 0x50,
     BIT = 0x51,
@@ -112,6 +116,7 @@ opcodes = dict(
     EDABIT = 0x59,
     SEDABIT = 0x5A,
     RANDOMS = 0x5B,
+    RANDOMFULLS = 0x5D,
     # Input
     INPUT = 0x60,
     INPUTFIX = 0xF0,
@@ -119,6 +124,7 @@ opcodes = dict(
     INPUTMIXED = 0xF2,
     INPUTMIXEDREG = 0xF3,
     RAWINPUT = 0xF4,
+    INPUTPERSONAL = 0xF5,
     STARTINPUT = 0x61,
     STOPINPUT = 0x62,  
     READSOCKETC = 0x63,
@@ -189,6 +195,8 @@ opcodes = dict(
     CONDPRINTSTR = 0xBF,
     PRINTFLOATPREC = 0xE0,
     CONDPRINTPLAIN = 0xE1,
+    INTOUTPUT = 0xE6,
+    FLOATOUTPUT = 0xE7,
     GBITDEC = 0x184,
     GBITCOM = 0x185,
     # Secure socket
@@ -291,6 +299,10 @@ def vectorize(instruction, global_dict=None):
     Vectorized_Instruction.__name__ = vectorized_name
     global_dict[vectorized_name] = Vectorized_Instruction
     global_dict[instruction.__name__ + '_class'] = instruction
+    instruction.__doc__ = ''
+    # exclude GF(2^n) instructions from documentation
+    if instruction.code and instruction.code >> 8 == 1:
+        maybe_vectorized_instruction.__doc__ = ''
     return maybe_vectorized_instruction
 
 
@@ -377,6 +389,7 @@ def gf2n(instruction):
         global_dict[GF2N_Instruction.__name__] = GF2N_Instruction
 
     global_dict[instruction.__name__ + '_class'] = instruction_cls
+    instruction_cls.__doc__ = ''
     return maybe_gf2n_instruction
     #return instruction
 
@@ -403,7 +416,7 @@ def cisc(function):
             program.curr_block.instructions.append(self)
 
         def get_def(self):
-            return [self.args[0]]
+            return [call[0][0] for call in self.calls]
 
         def get_used(self):
             return self.used
@@ -417,6 +430,7 @@ def cisc(function):
 
         def merge(self, other):
             self.calls += other.calls
+            self.used += other.used
 
         def get_size(self):
             return self.args[0].size
@@ -464,7 +478,9 @@ def cisc(function):
                 inst.copy(size, subs)
             reset_global_vector_size()
 
-        def expand_merged(self):
+        def expand_merged(self, skip):
+            if function.__name__ in skip:
+                return [self], 0
             tape = program.curr_tape
             block = tape.BasicBlock(tape, None, None)
             tape.active_basicblock = block
@@ -490,10 +506,38 @@ def cisc(function):
                 reg.mov(reg, new_regs[0].get_vector(base, reg.size))
                 reset_global_vector_size()
                 base += reg.size
-            return block.instructions
+            return block.instructions, self.n_rounds - 1
 
-        def expanded_rounds(self):
-            return self.n_rounds - 1
+        def add_usage(self, *args):
+            pass
+
+        def get_bytes(self):
+            assert len(self.kwargs) < 2
+            res = int_to_bytes(opcodes['CISC'])
+            res += int_to_bytes(sum(len(x[0]) + 2 for x in self.calls) + 1)
+            name = self.function.__name__
+            String.check(name)
+            res += String.encode(name)
+            for call in self.calls:
+                assert not call[1]
+                res += int_to_bytes(len(call[0]) + 2)
+                res += int_to_bytes(call[0][0].size)
+                for arg in call[0]:
+                    res += self.arg_to_bytes(arg)
+            return bytearray(res)
+
+        @classmethod
+        def arg_to_bytes(self, arg):
+            if arg is None:
+                return int_to_bytes(0)
+            try:
+                return int_to_bytes(arg.i)
+            except:
+                return int_to_bytes(arg)
+
+        def __str__(self):
+            return self.function.__name__ + ' ' + ', '.join(
+                str(x) for x in itertools.chain(call[0] for call in self.calls))
 
     MergeCISC.__name__ = function.__name__
 
@@ -798,11 +842,8 @@ class Instruction(object):
         else:
             return self.args
 
-    def expand_merged(self):
-        return [self]
-
-    def expanded_rounds(self):
-        return 0
+    def expand_merged(self, skip):
+        return [self], 0
 
     def get_new_args(self, size, subs):
         new_args = []
@@ -897,7 +938,7 @@ class DirectMemoryWriteInstruction(DirectMemoryInstruction, \
                                        WriteMemoryInstruction):
     __slots__ = []
     def __init__(self, *args, **kwargs):
-        if program.curr_tape.prevent_direct_memory_write:
+        if not program.curr_tape.singular:
             raise CompilerError('Direct memory writing prevented in threads')
         super(DirectMemoryWriteInstruction, self).__init__(*args, **kwargs)
 
@@ -987,17 +1028,7 @@ class ClearShiftInstruction(ClearImmediate):
 
     def check_args(self):
         super(ClearShiftInstruction, self).check_args()
-        bits = float('nan')
-        if self.is_gf2n():
-            if program.galois_length > 64:
-                bits = 127
-            else:
-                # assume 64-bit machine
-                bits = 63
-        if self.args[2] > bits:
-            raise CompilerError('Shifting by more than %d bits '
-                                'not implemented' % bits)
-        elif self.args[2] < 0:
+        if self.args[2] < 0:
             raise CompilerError('negative shift')
 
 ###

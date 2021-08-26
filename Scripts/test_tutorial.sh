@@ -7,6 +7,8 @@ while getopts XYC opt; do
 	   ;;
 	Y) dabit=2
 	   ;;
+	C) cont=1
+	   ;;
     esac
 done
 
@@ -25,17 +27,20 @@ function test_vm
     ulimit -c unlimited
     vm=$1
     shift
-    if ! Scripts/$vm.sh tutorial $* | grep 'weighted average: 2.333'; then
-	for i in 0 1 2; do
+    if ! Scripts/$vm.sh tutorial $* > /dev/null ||
+	    ! grep 'weighted average: 2.333' logs/tutorial-0; then
+	for i in $(seq 4 -1 0); do
 	    echo == Party $i
 	    cat logs/tutorial-$i
 	done
-	exit 1
+	test -z $cont && exit 1
     fi
 }
 
 # big buckets for smallest batches
 run_opts="$run_opts -B 5"
+
+export PORT=$((RANDOM%10000+10000))
 
 for dabit in ${dabit:-0 1 2}; do
     if [[ $dabit = 1 ]]; then
@@ -54,27 +59,32 @@ for dabit in ${dabit:-0 1 2}; do
     ./compile.py  $compile_opts tutorial
 
     for i in rep-field shamir mal-rep-field ps-rep-field sy-rep-field \
-		       mal-shamir sy-shamir hemi semi \
-		       soho cowgear mascot; do
+		       atlas mal-shamir sy-shamir hemi semi \
+		       soho mascot; do
 	test_vm $i $run_opts
     done
 
-    test_vm chaigear $run_opts -l 3 -c 2
+    for i in cowgear chaigear; do
+	test_vm $i $run_opts -l 3 -c 2
+    done
 done
 
-./compile.py -R 64 -Z 3 tutorial
-test_vm ring $run_opts
+if test $dabit != 0; then
+    ./compile.py -R 64 -Z 3 tutorial
+    test_vm ring $run_opts
 
-./compile.py -R 64 -Z 4 tutorial
-test_vm rep4-ring $run_opts
+    ./compile.py -R 64 -Z 4 tutorial
+    test_vm rep4-ring $run_opts
 
-./compile.py -R 64 -Z 2 tutorial
-test_vm semi2k $run_opts
+    ./compile.py -R 64 -Z ${PLAYERS:-2} tutorial
+    test_vm semi2k $run_opts
+fi
 
 ./compile.py tutorial
 
-test_vm cowgear $run_opts -T
-test_vm chaigear $run_opts -T -l 3 -c 2
+for i in cowgear chaigear; do
+    test_vm $i $run_opts -l 3 -c 2 -J
+done
 
 if test $skip_binary; then
    exit
@@ -82,7 +92,7 @@ fi
 
 ./compile.py -B 16  $compile_opts tutorial
 
-for i in replicated mal-rep-bin semi-bin ccd mal-ccd; do
+for i in replicated mal-rep-bin ps-rep-bin semi-bin ccd mal-ccd; do
     test_vm $i $run_opts
 done
 

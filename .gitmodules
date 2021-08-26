@@ -1,9 +1,12 @@
 [submodule "SimpleOT"]
 	path = SimpleOT
-	url = git@github.com:mkskeller/SimpleOT.git
+	url = https://github.com/mkskeller/SimpleOT
 [submodule "mpir"]
 	path = mpir
 	url = git://github.com/wbhart/mpir.git
 [submodule "Programs/Circuits"]
 	path = Programs/Circuits
-	url = git@github.com:mkskeller/bristol-fashion.git
+	url = https://github.com/mkskeller/bristol-fashion
+[submodule "simde"]
+	path = simde
+	url = https://github.com/simd-everywhere/simde

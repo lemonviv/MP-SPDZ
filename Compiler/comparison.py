@@ -7,7 +7,7 @@ representing the integer bit length, and kappa the statistical security
 parameter.
 
 Most of these routines were implemented before the cint/sint classes, so use
-the old-fasioned Register class and assembly instructions instead of operator
+the old-fashioned Register class and assembly instructions instead of operator
 overloading.
 
 The PreMulC function has a few variants, depending on whether
@@ -61,13 +61,14 @@ def ld2i(c, n):
         t1 = t2
     movc(c, t1)
 
-inverse_of_two = {}
-
-def divide_by_two(res, x, m=1):
-    """ Faster clear division by two using a cached value of 2^-1 mod p """
-    tmp = program.curr_block.new_reg('c')
-    inv2m(tmp, m)
-    mulc(res, x, tmp)
+def require_ring_size(k, op):
+    if int(program.options.ring) < k:
+        msg = 'ring size too small for %s, compile ' \
+            'with \'-R %d\' or more' % (op, k)
+        if k > 64 and k < 128:
+            msg += ' (maybe \'-R 128\' as it is supported by default)'
+        raise CompilerError(msg)
+    program.curr_tape.require_bit_length(k)
 
 @instructions_base.cisc
 def LTZ(s, a, k, kappa):
@@ -86,7 +87,7 @@ def LTZ(s, a, k, kappa):
         return
     elif program.options.ring:
         from . import floatingpoint
-        assert(int(program.options.ring) >= k)
+        require_ring_size(k, 'comparison')
         m = k - 1
         shift = int(program.options.ring) - k
         r_prime, r_bin = MaskingBitsInRing(k)
@@ -116,23 +117,11 @@ def Trunc(d, a, k, m, kappa, signed):
     m: compile-time integer
     signed: True/False, describes a
     """
-    a_prime = program.curr_block.new_reg('s')
-    t = program.curr_block.new_reg('s')
-    c = [program.curr_block.new_reg('c') for i in range(3)]
-    c2m = program.curr_block.new_reg('c')
     if m == 0:
         movs(d, a)
         return
-    elif program.options.ring:
-        return TruncRing(d, a, k, m, signed)
-    elif m == 1:
-        Mod2(a_prime, a, k, kappa, signed)
     else:
-        Mod2m(a_prime, a, k, m, kappa, signed)
-    subs(t, a, a_prime)
-    ldi(c[1], 1)
-    divide_by_two(c[2], c[1], m)
-    mulm(d, t, c[2])
+        movs(d, program.non_linear.trunc(a, k, m, kappa, signed))
 
 def TruncRing(d, a, k, m, signed):
     program.curr_tape.require_bit_length(1)
@@ -188,6 +177,8 @@ def TruncLeakyInRing(a, k, m, signed):
     Returns a >> m.
     Requires a < 2^k and leaks a % 2^m (needs to be constant or random).
     """
+    if k == m:
+        return 0
     assert k > m
     assert int(program.options.ring) >= k
     from .types import sint, intbitint, cint, cgf2n
@@ -218,14 +209,9 @@ def TruncRoundNearest(a, k, m, kappa, signed=False):
     """
     if m == 0:
         return a
-    if k == int(program.options.ring):
-        # cannot work with bit length k+1
-        tmp = TruncRing(None, a, k, m - 1, signed)
-        return TruncRing(None, tmp + 1, k - m + 1, 1, signed)
-    from .types import sint
-    res = sint()
-    Trunc(res, a + (1 << (m - 1)), k + 1, m, kappa, signed)
-    return res
+    nl = program.non_linear
+    nl.check_security(kappa)
+    return program.non_linear.trunc_round_nearest(a, k, m, signed)
 
 @instructions_base.cisc
 def Mod2m(a_prime, a, k, m, kappa, signed):
@@ -236,18 +222,9 @@ def Mod2m(a_prime, a, k, m, kappa, signed):
     m: compile-time integer
     signed: True/False, describes a
     """
-    if not util.is_constant(m):
-        raise CompilerError('m must be a public constant')
-    if m >= k:
-        movs(a_prime, a)
-        return
-    if program.options.ring:
-        return Mod2mRing(a_prime, a, k, m, signed)
-    else:
-        if m == 1:
-            return Mod2(a_prime, a, k, kappa, signed)
-        else:
-            return Mod2mField(a_prime, a, k, m, kappa, signed)
+    nl = program.non_linear
+    nl.check_security(kappa)
+    movs(a_prime, program.non_linear.mod2m(a, k, m, signed))
 
 def Mod2mRing(a_prime, a, k, m, signed):
     assert(int(program.options.ring) >= k)
@@ -464,6 +441,11 @@ def CarryOutRaw(a, b, c=0):
     assert len(a) == len(b)
     k = len(a)
     from . import types
+    if program.linear_rounds():
+        carry = 0
+        for (ai, bi) in zip(a, b):
+            carry = bi.carry_out(ai, carry)
+        return carry
     d = [program.curr_block.new_reg('s') for i in range(k)]
     s = [program.curr_block.new_reg('s') for i in range(3)]
     for i in range(k):
@@ -493,13 +475,12 @@ def BitLTL(res, a, b, kappa):
     """
     k = len(b)
     a_bits = b[0].bit_decompose_clear(a, k)
-    s = [[program.curr_block.new_reg('s') for i in range(k)] for j in range(2)]
-    t = [program.curr_block.new_reg('s') for i in range(1)]
-    for i in range(len(b)):
-        s[0][i] = b[0].long_one() - b[i]
-    CarryOut(t[0], a_bits[::-1], s[0][::-1], b[0].long_one(), kappa)
-    subsfi(res, t[0], 1)
-    return a_bits, s[0]
+    from .types import sint
+    movs(res, sint.conv(BitLTL_raw(a_bits, b)))
+
+def BitLTL_raw(a_bits, b):
+    s = [x.bit_not() for x in b]
+    return CarryOutRaw(a_bits[::-1], s[::-1], b[0].long_one()).bit_not()
 
 def PreMulC_with_inverses_and_vectors(p, a):
     """

@@ -9,12 +9,18 @@
 
 class FHE_PK;
 
-class Int_Random_Coins : public AddableMatrix<fixint<0>>
+#ifndef N_LIMBS_RAND
+#define N_LIMBS_RAND 1
+#endif
+
+class Int_Random_Coins : public AddableMatrix<fixint<N_LIMBS_RAND>>
 {
   typedef value_type::value_type T;
 
   const FHE_Params* params;
 public:
+  typedef value_type::value_type rand_type;
+
   Int_Random_Coins(const FHE_Params& params) : params(&params)
   { resize(3, params.phi_m()); }
 
@@ -46,8 +52,6 @@ class Random_Coins
       { params=&p; }
 
   Random_Coins(const FHE_PK& pk);
-
-  ~Random_Coins() { ; }
   
   // Rely on default copy assignment/constructor
 

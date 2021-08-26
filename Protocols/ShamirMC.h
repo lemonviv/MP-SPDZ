@@ -12,22 +12,35 @@
 #include "Tools/Bundle.h"
 
 template<class T>
-class ShamirMC : public MAC_Check_Base<T>
+class IndirectShamirMC : public MAC_Check_Base<T>
 {
-    vector<typename T::open_type::Scalar> reconstruction;
+    vector<octetStream> oss;
+    octetStream os;
 
-    bool send;
+public:
+    IndirectShamirMC(typename T::mac_key_type = {}, int = 0, int = 0) {}
+    ~IndirectShamirMC() {}
+
+    virtual void exchange(const Player& P);
+};
+
+template<class T>
+class ShamirMC : public IndirectShamirMC<T>
+{
+    typedef typename T::open_type::Scalar rec_type;
+    vector<typename T::open_type::Scalar> reconstruction;
 
     void finalize(vector<typename T::open_type>& values, const vector<T>& S);
 
 protected:
     Bundle<octetStream>* os;
+    const Player* player;
     int threshold;
 
     void prepare(const vector<T>& S, const Player& P);
 
 public:
-    ShamirMC() : send(false), os(0), threshold(ShamirMachine::s().threshold) {}
+    ShamirMC(int threshold = 0);
 
     // emulate MAC_Check
     ShamirMC(const typename T::mac_key_type& _, int __ = 0, int ___ = 0) : ShamirMC()
@@ -50,6 +63,8 @@ public:
     virtual typename T::open_type finalize_open();
 
     void Check(const Player& P) { (void)P; }
+
+    vector<rec_type> get_reconstruction(const Player& P);
 };
 
 #endif /* PROTOCOLS_SHAMIRMC_H_ */

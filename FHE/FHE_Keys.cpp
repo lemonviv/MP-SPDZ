@@ -5,18 +5,24 @@
 #include "PPData.h"
 #include "FFT_Data.h"
 
+#include "Math/modp.hpp"
+
 
 FHE_SK::FHE_SK(const FHE_PK& pk) : FHE_SK(pk.get_params(), pk.p())
 {
 }
 
 
-void add(FHE_SK& a,const FHE_SK& b,const FHE_SK& c)
+FHE_SK& FHE_SK::operator+=(const FHE_SK& c)
 { 
-  if (a.params!=b.params) { throw params_mismatch(); }
+  auto& a = *this;
+  auto& b = *this;
+
   if (a.params!=c.params) { throw params_mismatch(); }
 
-  add(a.sk,b.sk,c.sk); 
+  ::add(a.sk,b.sk,c.sk);
+
+  return *this;
 }
 
 
@@ -36,7 +42,7 @@ Rq_Element FHE_PK::sample_secret_key(PRNG& G)
 {
   Rq_Element sk = FHE_SK(*this).s();
   // Generate the secret key
-  sk.from_vec((*params).sampleHwt(G));
+  sk.from(GaussianGenerator<bigint>(params->get_DG(), G));
   return sk;
 }
 
@@ -49,7 +55,7 @@ void FHE_PK::KeyGen(Rq_Element& sk, PRNG& G, int noise_boost)
 
   // b0=a0*s+p*e0
   Rq_Element e0((*PK.params).FFTD(),evaluation,evaluation);
-  e0.from_vec((*PK.params).sampleGaussian(G, noise_boost));
+  e0.from(GaussianGenerator<bigint>(params->get_DG(), G, noise_boost));
   mul(PK.b0,PK.a0,sk);
   mul(e0,e0,PK.pr);
   add(PK.b0,PK.b0,e0);
@@ -66,7 +72,7 @@ void FHE_PK::KeyGen(Rq_Element& sk, PRNG& G, int noise_boost)
 
       // bs=as*s+p*es
       Rq_Element es((*PK.params).FFTD(),evaluation,evaluation);
-      es.from_vec((*PK.params).sampleGaussian(G, noise_boost));
+      es.from(GaussianGenerator<bigint>(params->get_DG(), G, noise_boost));
       mul(PK.Sw_b,PK.Sw_a,sk);
       mul(es,es,PK.pr);
       add(PK.Sw_b,PK.Sw_b,es);
@@ -82,7 +88,7 @@ void FHE_PK::KeyGen(Rq_Element& sk, PRNG& G, int noise_boost)
     }
 }
 
-void FHE_PK::check_noise(const FHE_SK& SK)
+void FHE_PK::check_noise(const FHE_SK& SK) const
 {
   Rq_Element sk = SK.s();
   if (params->n_mults() > 0)
@@ -90,7 +96,7 @@ void FHE_PK::check_noise(const FHE_SK& SK)
   check_noise(b0 - a0 * sk);
 }
 
-void FHE_PK::check_noise(const Rq_Element& x, bool check_modulo)
+void FHE_PK::check_noise(const Rq_Element& x, bool check_modulo) const
 {
   assert(pr != 0);
   vector<bigint> noise = x.to_vec_bigint();
@@ -108,17 +114,20 @@ void FHE_PK::check_noise(const Rq_Element& x, bool check_modulo)
       noise[i] /= pr;
       m = m > noise[i] ? m : noise[i];
     }
+#ifdef VERBOSE_KEYGEN
   cerr << "max noise: " << m << endl;
+#endif
 }
 
 
-template<>
+template<class T, class FD, class S>
 void FHE_PK::encrypt(Ciphertext& c,
-                     const Plaintext<gfp,FFT_Data,bigint>& mess,const Random_Coins& rc) const
+                     const Plaintext<T, FD, S>& mess,const Random_Coins& rc) const
 {
   if (&c.get_params()!=params)  { throw params_mismatch(); }
   if (&rc.get_params()!=params) { throw params_mismatch(); }
-  if (pr==2)                    { throw pr_mismatch(); }
+  if (T::characteristic_two ^ (pr == 2))
+    throw pr_mismatch();
 
   Rq_Element mm((*params).FFTD(),polynomial,polynomial);
   mm.from(mess.get_iterator());
@@ -126,49 +135,12 @@ void FHE_PK::encrypt(Ciphertext& c,
   quasi_encrypt(c,mm,rc);
 }
 
-
-
-template<>
-void FHE_PK::encrypt(Ciphertext& c,
-                     const Plaintext<gfp,PPData,bigint>& mess,const Random_Coins& rc) const
-{
-  if (&c.get_params()!=params)  { throw params_mismatch(); }
-  if (&rc.get_params()!=params) { throw params_mismatch(); }
-  if (pr==2)                    { throw pr_mismatch(); }
-
-  mess.to_poly();
-  encrypt(c, mess.get_poly(), rc);
-}
-
-
-
-
-template<>
-void FHE_PK::encrypt(Ciphertext& c,
-                     const Plaintext<gf2n_short,P2Data,int>& mess,const Random_Coins& rc) const
-{
-  if (&c.get_params()!=params)  { throw params_mismatch(); }
-  if (&rc.get_params()!=params) { throw params_mismatch(); }
-  if (pr!=2)                    { throw pr_mismatch(); }
-
-  mess.to_poly();
-  encrypt(c, mess.get_poly(), rc);
-}
-
-template <class S>
-void FHE_PK::encrypt(Ciphertext& c, const vector<S>& mess,
-    const Random_Coins& rc) const
-{
-  Rq_Element mm((*params).FFTD(),polynomial,polynomial);
-  mm.from(Iterator<S>(mess));
-  quasi_encrypt(c, mm, rc);
-}
-
 void FHE_PK::quasi_encrypt(Ciphertext& c,
                            const Rq_Element& mess,const Random_Coins& rc) const
 {
   if (&c.get_params()!=params)  { throw params_mismatch(); }
   if (&rc.get_params()!=params) { throw params_mismatch(); }
+  assert(pr != 0);
 
   Rq_Element ed,edd,c0,c1,aa;
 
@@ -212,42 +184,12 @@ Ciphertext FHE_PK::encrypt(
 }
 
 
-template<>
-void FHE_SK::decrypt(Plaintext<gfp,FFT_Data,bigint>& mess,const Ciphertext& c) const
+template<class T, class FD, class S>
+void FHE_SK::decrypt(Plaintext<T,FD,S>& mess,const Ciphertext& c) const
 {
   if (&c.get_params()!=params)  { throw params_mismatch(); }
-  if (pr==2)                    { throw pr_mismatch(); }
-
-  Rq_Element ans;
-
-  mul(ans,c.c1(),sk);
-  sub(ans,c.c0(),ans);
-  ans.change_rep(polynomial);
-  mess.set_poly_mod(ans.get_iterator(), ans.get_modulus());
-}
-
-
-
-template<>
-void FHE_SK::decrypt(Plaintext<gfp,PPData,bigint>& mess,const Ciphertext& c) const
-{
-  if (&c.get_params()!=params)  { throw params_mismatch(); }
-  if (pr==2)                    { throw pr_mismatch(); }
-
-  Rq_Element ans;
-
-  mul(ans,c.c1(),sk);
-  sub(ans,c.c0(),ans);
-  mess.set_poly_mod(ans.to_vec_bigint(),ans.get_modulus());
-}
-
-
-
-template<>
-void FHE_SK::decrypt(Plaintext<gf2n_short,P2Data,int>& mess,const Ciphertext& c) const
-{
-  if (&c.get_params()!=params)  { throw params_mismatch(); }
-  if (pr!=2)                    { throw pr_mismatch(); }
+  if (T::characteristic_two ^ (pr == 2))
+    throw pr_mismatch();
 
   Rq_Element ans;
 
@@ -339,8 +281,11 @@ void FHE_PK::pack(octetStream& o) const
   o.append((octet*) "PKPKPKPK", 8);
   a0.pack(o);
   b0.pack(o);
-  Sw_a.pack(o);
-  Sw_b.pack(o);
+  if (params->n_mults() > 0)
+    {
+      Sw_a.pack(o);
+      Sw_b.pack(o);
+    }
   pr.pack(o);
 }
 
@@ -352,8 +297,11 @@ void FHE_PK::unpack(octetStream& o)
     throw runtime_error("invalid serialization of public key");
   a0.unpack(o);
   b0.unpack(o);
-  Sw_a.unpack(o);
-  Sw_b.unpack(o);
+  if (params->n_mults() > 0)
+    {
+      Sw_a.unpack(o);
+      Sw_b.unpack(o);
+    }
   pr.unpack(o);
 }
 
@@ -383,14 +331,30 @@ void FHE_SK::check(const FHE_Params& params, const FHE_PK& pk,
 }
 
 
+template<class FD>
+void FHE_SK::check(const FHE_PK& pk, const FD& FieldD)
+{
+  check(*params, pk, pr);
+  pk.check_noise(*this);
+  if (decrypt(pk.encrypt(Plaintext_<FD>(FieldD)), FieldD) !=
+      Plaintext_<FD>(FieldD))
+    throw runtime_error("incorrect key pair");
+}
+
+
+
 void FHE_PK::check(const FHE_Params& params, const bigint& pr) const
 {
   if (this->pr != pr)
     throw pr_mismatch();
   a0.check(params);
   b0.check(params);
-  Sw_a.check(params);
-  Sw_b.check(params);
+
+  if (params.n_mults() > 0)
+    {
+      Sw_a.check(params);
+      Sw_b.check(params);
+    }
 }
 
 
@@ -399,11 +363,6 @@ template Ciphertext FHE_PK::encrypt(const Plaintext_<FFT_Data>& mess,
     const Random_Coins& rc) const;
 template Ciphertext FHE_PK::encrypt(const Plaintext_<FFT_Data>& mess) const;
 template Ciphertext FHE_PK::encrypt(const Plaintext_<P2Data>& mess) const;
-
-template void FHE_PK::encrypt(Ciphertext& c, const vector<int>& mess,
-    const Random_Coins& rc) const;
-template void FHE_PK::encrypt(Ciphertext& c, const vector<fixint<GFP_MOD_SZ>>& mess,
-    const Random_Coins& rc) const;
 
 template Plaintext_<FFT_Data> FHE_SK::decrypt(const Ciphertext& c,
         const FFT_Data& FieldD);
@@ -414,3 +373,6 @@ template void FHE_SK::decrypt_any(Plaintext_<FFT_Data>& res,
         const Ciphertext& c);
 template void FHE_SK::decrypt_any(Plaintext_<P2Data>& res,
         const Ciphertext& c);
+
+template void FHE_SK::check(const FHE_PK& pk, const FFT_Data&);
+template void FHE_SK::check(const FHE_PK& pk, const P2Data&);

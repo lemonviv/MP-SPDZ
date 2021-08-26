@@ -1,11 +1,12 @@
 
 #include "bigint.h"
 #include "gfp.h"
+#include "gfpvar.h"
 #include "Integer.h"
 #include "Z2k.h"
 #include "Z2k.hpp"
 #include "GC/Clear.h"
-#include "Exceptions/Exceptions.h"
+#include "Tools/Exceptions.h"
 
 #include "bigint.hpp"
 
@@ -20,6 +21,7 @@ public:
 };
 
 thread_local bigint bigint::tmp = 0;
+thread_local bigint bigint::tmp2 = 0;
 thread_local gmp_random bigint::random;
 
 bigint sqrRootMod(const bigint& a,const bigint& p)
@@ -144,6 +146,18 @@ bigint::bigint(const Integer& x) : bigint(SignedZ2<64>(x))
 
 bigint::bigint(const GC::Clear& x) : bigint(SignedZ2<64>(x))
 {
+}
+
+bigint::bigint(const mp_limb_t* data, size_t n_limbs)
+{
+  mpz_import(get_mpz_t(), n_limbs, -1, 8, -1, 0, data);
+}
+
+string to_string(const bigint& x)
+{
+  stringstream ss;
+  ss << x;
+  return ss.str();
 }
 
 #ifdef REALLOC_POLICE

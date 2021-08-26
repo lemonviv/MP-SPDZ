@@ -1,10 +1,15 @@
+"""
+This module contains the building blocks of the compiler such as code
+blocks and registers. Most relevant is the central :py:class:`Program`
+object that holds various properties of the computation.
+"""
+
 from Compiler.config import *
 from Compiler.exceptions import *
 from Compiler.instructions_base import RegType
 import Compiler.instructions
 import Compiler.instructions_base
 import Compiler.instructions_base as inst_base
-from . import compilerLib
 from . import allocator as al
 from . import util
 import random
@@ -23,9 +28,7 @@ data_types = dict(
     square = 1,
     bit = 2,
     inverse = 3,
-    bittriple = 4,
-    bitgf2ntriple = 5,
-    dabit = 6,
+    dabit = 4,
 )
 
 field_types = dict(
@@ -34,37 +37,78 @@ field_types = dict(
     bit = 2,
 )
 
+class defaults:
+    debug = False
+    verbose = False
+    outfile = None
+    ring = 0
+    field = 0
+    binary = 0
+    prime = None
+    galois = 40
+    budget = 100000
+    mixed = False
+    edabit = False
+    split = None
+    cisc = False
+    comparison = None
+    merge_opens = True
+    preserve_mem_order = False
+    max_parallel_open = 0
+    dead_code_elimination = False
+    noreallocate = False
+    asmoutfile = None
+    stop = False
+    insecure = False
+    keep_cisc = False
 
 class Program(object):
-    """ A program consists of a list of tapes and a scheduled order
-    of execution for these tapes.
-    
-    These are created by executing a file containing appropriate instructions
-    and threads. """
-    def __init__(self, args, options):
+    """ A program consists of a list of tapes representing the whole
+    computation.
+
+    When compiling an :file:`.mpc` file, the single instances is
+    available as :py:obj:`program` in order. When compiling directly
+    from Python code, an instance has to be created before running any
+    instructions.
+    """
+    def __init__(self, args, options=defaults):
+        from .non_linear import Ring, Prime, KnownPrime
         self.options = options
         self.verbose = options.verbose
         self.args = args
         self.init_names(args)
+        self._security = 40
+        self.prime = None
+        self.tapes = []
         if sum(x != 0 for x in(options.ring, options.field,
                                                options.binary)) > 1:
             raise CompilerError('can only use one out of -B, -R, -F')
+        if options.prime and (options.ring or options.binary):
+            raise CompilerError('can only use one out of -B, -R, -p')
         if options.ring:
-            self.bit_length = int(options.ring) - 1
+            self.set_ring_size(int(options.ring))
         else:
             self.bit_length = int(options.binary) or int(options.field)
-        if not self.bit_length:
-            self.bit_length = 64
+            if options.prime:
+                self.prime = int(options.prime)
+                max_bit_length = int(options.prime).bit_length() - 2
+                if self.bit_length > max_bit_length:
+                    raise CompilerError('integer bit length can be maximal %s' %
+                                        max_bit_length)
+                self.bit_length = self.bit_length or max_bit_length
+                self.non_linear = KnownPrime(self.prime)
+            else:
+                self.non_linear = Prime(self.security)
+                if not self.bit_length:
+                    self.bit_length = 64
         print('Default bit length:', self.bit_length)
-        self.security = 40
         print('Default security parameter:', self.security)
         self.galois_length = int(options.galois)
         if self.verbose:
             print('Galois length:', self.galois_length)
         self.tape_counter = 0
-        self.tapes = []
         self._curr_tape = None
-        self.DEBUG = False
+        self.DEBUG = options.debug
         self.allocated_mem = RegType.create_dict(lambda: USER_MEM)
         self.free_mem_blocks = defaultdict(al.BlockAllocator)
         self.allocated_mem_blocks = {}
@@ -72,7 +116,6 @@ class Program(object):
         self.req_num = None
         self.tape_stack = []
         self.n_threads = 1
-        self.free_threads = set()
         self.public_input_file = None
         self.types = {}
         self.budget = int(self.options.budget)
@@ -95,14 +138,25 @@ class Program(object):
         self.to_merge += [gc.ldmsdi, gc.stmsdi, gc.ldmsd, gc.stmsd, \
                           gc.stmsdci, gc.xors, gc.andrs, gc.ands, gc.inputb]
         self.use_trunc_pr = False
+        """ Setting whether to use special probabilistic truncation. """
         self.use_dabit = options.mixed
+        """ Setting whether to use daBits for non-linear functionality. """
         self._edabit = options.edabit
         self._split = False
         if options.split:
             self.use_split(int(options.split))
         self._square = False
         self._always_raw = False
+        self._linear_rounds = False
+        self.warn_about_mem = [True]
+        self.relevant_opts = set()
         Program.prog = self
+        from . import instructions_base, instructions, types, comparison
+        instructions.program = self
+        instructions_base.program = self
+        types.program = self
+        comparison.program = self
+        comparison.set_variant(options)
 
     def get_args(self):
         return self.args
@@ -149,7 +203,39 @@ class Program(object):
                                         for arg in args[1:])
         self.progname = progname
 
+    def set_ring_size(self, ring_size):
+        from .non_linear import Ring
+        for tape in self.tapes:
+            prev = tape.req_bit_length['p']
+            if prev and prev != ring_size:
+                raise CompilerError('cannot have different ring sizes')
+        self.bit_length = ring_size - 1
+        self.non_linear = Ring(ring_size)
+        self.options.ring = str(ring_size)
+
     def new_tape(self, function, args=[], name=None, single_thread=False):
+        """
+        Create a new tape from a function. See
+        :py:func:`~Compiler.library.multithread` and
+        :py:func:`~Compiler.library.for_range_opt_multithread` for
+        easier-to-use higher-level functionality. The following runs
+        two threads defined by two different functions::
+
+            def f():
+                ...
+            def g():
+                ...
+            tapes = [program.new_tape(x) for x in (f, g)]
+            thread_numbers = program.run_tapes(tapes)
+            program.join_tapes(threads_numbers)
+
+        :param function: Python function defining the thread
+        :param args: arguments to the function
+        :param name: name used for files
+        :param single_thread: Boolean indicating whether tape will never be run in parallel to itself
+        :returns: tape handle
+
+        """
         if name is None:
             name = function.__name__
         name = "%s-%s" % (self.name, name)
@@ -158,7 +244,7 @@ class Program(object):
         tape_index = len(self.tapes)
         self.tape_stack.append(self.curr_tape)
         self.curr_tape = Tape(name, self)
-        self.curr_tape.prevent_direct_memory_write = not single_thread
+        self.curr_tape.singular = single_thread
         self.tapes.append(self.curr_tape)
         function(*args)
         self.finalize_tape(self.curr_tape)
@@ -170,14 +256,31 @@ class Program(object):
         return self.run_tapes([[tape_index, arg]])[0]
 
     def run_tapes(self, args):
-        if self.curr_tape is not self.tapes[0]:
+        """ Run tapes in parallel. See :py:func:`new_tape` for an example.
+
+        :param args: list of tape handles or tuples of tape handle and extra argument (for :py:func:`~Compiler.library.get_arg`)
+        :returns: list of thread numbers
+        """
+        if not self.curr_tape.singular:
             raise CompilerError('Compiler does not support ' \
                                     'recursive spawning of threads')
+        args = [list(util.tuplify(arg)) for arg in args]
+        singular_tapes = set()
+        for arg in args:
+            if self.tapes[arg[0]].singular:
+                if arg[0] in singular_tapes:
+                    raise CompilerError('cannot run singular tape in parallel')
+                singular_tapes.add(arg[0])
+            assert len(arg)
+            assert len(arg) <= 2
+            if len(arg) == 1:
+                arg += [0]
         thread_numbers = []
         while len(thread_numbers) < len(args):
-            if self.free_threads:
-                thread_numbers.append(min(self.free_threads))
-                self.free_threads.remove(thread_numbers[-1])
+            free_threads = self.curr_tape.free_threads
+            if free_threads:
+                thread_numbers.append(min(free_threads))
+                free_threads.remove(thread_numbers[-1])
             else:
                 thread_numbers.append(self.n_threads)
                 self.n_threads += 1
@@ -191,10 +294,18 @@ class Program(object):
         return thread_numbers
 
     def join_tape(self, thread_number):
+        self.join_tapes([thread_number])
+
+    def join_tapes(self, thread_numbers):
+        """ Wait for completion of tapes.  See :py:func:`new_tape` for an example.
+
+        :param thread_numbers: list of thread numbers
+        """
         self.curr_tape.start_new_basicblock(name='pre-join_tape')
-        Compiler.instructions.join_tape(thread_number)
+        for thread_number in thread_numbers:
+            Compiler.instructions.join_tape(thread_number)
+            self.curr_tape.free_threads.add(thread_number)
         self.curr_tape.start_new_basicblock(name='post-join_tape')
-        self.free_threads.add(thread_number)
 
     def update_req(self, tape):
         if self.req_num is None:
@@ -202,7 +313,8 @@ class Program(object):
         else:
             self.req_num += tape.req_num
     
-    def write_bytes(self, outfile=None):
+    def write_bytes(self):
+
         """ Write all non-empty threads and schedule to files. """
 
         nonempty_tapes = [t for t in self.tapes]
@@ -216,6 +328,15 @@ class Program(object):
         sch_file.write('1 0\n')
         sch_file.write('0\n')
         sch_file.write(' '.join(sys.argv) + '\n')
+        req = max(x.req_bit_length['p'] for x in self.tapes)
+        if self.options.ring:
+            sch_file.write('R:%s' % self.options.ring)
+        elif self.options.prime:
+            sch_file.write('p:%s' % self.options.prime)
+        else:
+            sch_file.write('lgp:%s' % req)
+        sch_file.write('\n')
+        sch_file.write('opts: %s\n' % ' '.join(self.relevant_opts))
         for tape in self.tapes:
             tape.write_bytes()
 
@@ -249,7 +370,7 @@ class Program(object):
         """ Allocate memory from the top """
         if not isinstance(size, int):
             raise CompilerError('size must be known at compile time')
-        if (creator_tape or self.curr_tape) != self.tapes[0]:
+        if not (creator_tape or self.curr_tape).singular:
             raise CompilerError('cannot allocate memory outside main thread')
         if size == 0:
             return
@@ -282,12 +403,29 @@ class Program(object):
         size = self.allocated_mem_blocks.pop((addr,mem_type))
         self.free_mem_blocks[mem_type].push(addr, size)
 
+    def finalize(self):
+        # optimize the tapes
+        for tape in self.tapes:
+            tape.optimize(self.options)
+
+        if self.tapes:
+            self.update_req(self.curr_tape)
+
+        # finalize the memory
+        self.finalize_memory()
+
+        self.write_bytes()
+
+        if self.options.asmoutfile:
+            for tape in self.tapes:
+                tape.write_str(self.options.asmoutfile + '-' + tape.name)
+
     def finalize_memory(self):
         from . import library
         self.curr_tape.start_new_basicblock(None, 'memory-usage')
         # reset register counter to 0
         self.curr_tape.init_registers()
-        for mem_type,size in list(self.allocated_mem.items()):
+        for mem_type,size in sorted(self.allocated_mem.items()):
             if size:
                 #print "Memory of type '%s' of size %d" % (mem_type, size)
                 if mem_type in self.types:
@@ -300,18 +438,31 @@ class Program(object):
                 print('Saved %s memory units through reallocation' % self.saved)
 
     def public_input(self, x):
+        """ Append a value to the public input file. """
         if self.public_input_file is None:
             self.public_input_file = open(self.programs_dir +
                                           '/Public-Input/%s' % self.name, 'w')
         self.public_input_file.write('%s\n' % str(x))
 
     def set_bit_length(self, bit_length):
+        """ Change the integer bit length for non-linear functions. """
         self.bit_length = bit_length
         print('Changed bit length for comparisons etc. to', bit_length)
 
     def set_security(self, security):
-        self.security = security
+        self._security = security
+        self.non_linear.set_security(security)
         print('Changed statistical security for comparison etc. to', security)
+
+    @property
+    def security(self):
+        """ The statistical security parameter for non-linear
+        functions. """
+        return self._security
+
+    @security.setter
+    def security(self, security):
+        self.set_security(security)
 
     def optimize_for_gc(self):
         pass
@@ -321,8 +472,26 @@ class Program(object):
         self.tape_counter += 1
         return res
 
+    @property
+    def use_trunc_pr(self):
+        if not self._use_trunc_pr:
+            self.relevant_opts.add('trunc_pr')
+        return self._use_trunc_pr
+
+    @use_trunc_pr.setter
+    def use_trunc_pr(self, change):
+        self._use_trunc_pr = change
+
     def use_edabit(self, change=None):
+        """ Setting whether to use edaBits for non-linear
+        functionality (default: false).
+
+        :param change: change setting if not :py:obj:`None`
+        :returns: setting if :py:obj:`change` is :py:obj:`None`
+        """
         if change is None:
+            if not self._edabit:
+                self.relevant_opts.add('edabit')
             return self._edabit
         else:
             self._edabit = change
@@ -331,15 +500,29 @@ class Program(object):
         return True
 
     def use_split(self, change=None):
+        """ Setting whether to use local arithmetic-binary share
+        conversion for non-linear functionality (default: false).
+
+        :param change: change setting if not :py:obj:`None`
+        :returns: setting if :py:obj:`change` is :py:obj:`None`
+        """
         if change is None:
+            if not self._split:
+                self.relevant_opts.add('split')
             return self._split
         else:
             if change and not self.options.ring:
                 raise CompilerError('splitting only supported for rings')
-            assert change > 1
+            assert change > 1 or change == False
             self._split = change
 
     def use_square(self, change=None):
+        """ Setting whether to use preprocessed square tuples
+        (default: false).
+
+        :param change: change setting if not :py:obj:`None`
+        :returns: setting if :py:obj:`change` is :py:obj:`None`
+        """
         if change is None:
             return self._square
         else:
@@ -351,17 +534,34 @@ class Program(object):
         else:
             self._always_raw = change
 
+    def linear_rounds(self, change=None):
+        if change is None:
+            return self._linear_rounds
+        else:
+            self._linear_rounds = change
+
     def options_from_args(self):
+        """ Set a number of options from the command-line arguments. """
         if 'trunc_pr' in self.args:
             self.use_trunc_pr = True
+        if 'signed_trunc_pr' in self.args:
+            self.use_trunc_pr = -1
         if 'split' in self.args or 'split3' in self.args:
             self.use_split(3)
-        if 'split4' in self.args:
-            self.use_split(4)
+        for arg in self.args:
+            m = re.match('split([0-9]+)', arg)
+            if m:
+                self.use_split(int(m.group(1)))
         if 'raw' in self.args:
             self.always_raw(True)
         if 'edabit' in self.args:
             self.use_edabit(True)
+        if 'linear_rounds' in self.args:
+            self.linear_rounds(True)
+
+    def disable_memory_warnings(self):
+        self.warn_about_mem.append(False)
+        self.curr_block.warn_about_mem = False
 
 class Tape:
     """ A tape contains a list of basic blocks, onto which instructions are added. """
@@ -384,7 +584,8 @@ class Tape:
         self.req_bit_length = defaultdict(lambda: 0)
         self.function_basicblocks = {}
         self.functions = []
-        self.prevent_direct_memory_write = False
+        self.singular = True
+        self.free_threads = set()
 
     class BasicBlock(object):
         def __init__(self, parent, name, scope, exit_condition=None):
@@ -401,10 +602,11 @@ class Tape:
                 scope.children.append(self)
                 self.alloc_pool = scope.alloc_pool
             else:
-                self.alloc_pool = defaultdict(set)
+                self.alloc_pool = defaultdict(list)
             self.purged = False
             self.n_rounds = 0
             self.n_to_merge = 0
+            self.warn_about_mem = parent.program.warn_about_mem[-1]
 
         def __len__(self):
             return len(self.instructions)
@@ -472,9 +674,14 @@ class Tape:
 
         def expand_cisc(self):
             new_instructions = []
+            if self.parent.program.options.keep_cisc:
+                skip = ['LTZ', 'Trunc']
+            else:
+                skip = []
             for inst in self.instructions:
-                new_instructions.extend(inst.expand_merged())
-                self.n_rounds += inst.expanded_rounds()
+                new_inst, n_rounds = inst.expand_merged(skip)
+                new_instructions.extend(new_inst)
+                self.n_rounds += n_rounds
             self.instructions = new_instructions
 
         def __str__(self):
@@ -506,13 +713,7 @@ class Tape:
         self.reg_counter = RegType.create_dict(lambda: 0)
    
     def init_names(self, name):
-        # ignore path to file - source must be in Programs/Source
-        name = name.split('/')[-1]
-        if name.endswith('.asm'):
-            self.name = name[:-4]
-        else:
-            self.name = name
-        self.infile = self.program.programs_dir + '/Source/' + self.name + '.asm'
+        self.name = name
         self.outfile = self.program.programs_dir + '/Bytecode/' + self.name + '.bc'
 
     def purge(self):
@@ -557,14 +758,14 @@ class Tape:
                 merger = al.Merger(block, options, \
                                    tuple(self.program.to_merge))
                 if options.dead_code_elimination:
-                    if len(block.instructions) > 100000:
+                    if len(block.instructions) > 1000000:
                         print('Eliminate dead code...')
                     merger.eliminate_dead_code()
                 if options.merge_opens and self.merge_opens:
                     if len(block.instructions) == 0:
                         block.used_from_scope = util.set_by_id()
                         continue
-                    if len(block.instructions) > 100000:
+                    if len(block.instructions) > 1000000:
                         print('Merging instructions...')
                     numrounds = merger.longest_paths_merge()
                     block.n_rounds = numrounds
@@ -605,7 +806,10 @@ class Tape:
 
         # allocate registers
         reg_counts = self.count_regs()
-        if not options.noreallocate:
+        if options.noreallocate:
+            if self.program.verbose:
+                print('Tape register usage:', dict(reg_counts))
+        else:
             if self.program.verbose:
                 print('Tape register usage before re-allocation:',
                       dict(reg_counts))
@@ -626,7 +830,7 @@ class Tape:
                         if child.instructions:
                             left.append(child)
             for i,block in enumerate(reversed(self.basicblocks)):
-                if len(block.instructions) > 100000:
+                if len(block.instructions) > 1000000:
                     print('Allocating %s, %d/%d' % \
                         (block.name, i, len(self.basicblocks)))
                 if block.exit_condition is not None:
@@ -743,7 +947,9 @@ class Tape:
             filename = self.program.programs_dir + '/Bytecode/' + filename
         print('Writing to', filename)
         f = open(filename, 'wb')
-        f.write(self.get_bytes())
+        for i in self._get_instructions():
+            if i is not None:
+                f.write(i.get_bytes())
         f.close()
     
     def new_reg(self, reg_type, size=None):
@@ -870,6 +1076,8 @@ class Tape:
 
     def require_bit_length(self, bit_length, t='p'):
         if t == 'p':
+            if self.program.prime:
+                assert bit_length < self.program.prime.bit_length() - 1
             self.req_bit_length[t] = max(bit_length + 1, \
                                          self.req_bit_length[t])
         else:
@@ -898,7 +1106,7 @@ class Tape:
             if size is None:
                 size = Compiler.instructions_base.get_global_vector_size()
             if size is not None and size > self.maximum_size:
-                raise CompilerError('vector too large')
+                raise CompilerError('vector too large: %d' % size)
             self.size = size
             self.vectorbase = self
             self.relative_i = 0
@@ -916,8 +1124,6 @@ class Tape:
                 self.caller = [frame[1:] for frame in inspect.stack()[1:]]
             else:
                 self.caller = None
-            if self.i % 1000000 == 0 and self.i > 0:
-                print("Initialized %d registers at" % self.i, time.asctime())
 
         @property
         def i(self):
@@ -971,6 +1177,8 @@ class Tape:
             return self.vector or [self]
 
         def __getitem__(self, index):
+            if self.size == 1 and index == 0:
+                return self
             if not self.vector:
                 self.create_vector_elements()
             return self.vector[index]

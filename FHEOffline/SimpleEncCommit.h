@@ -45,8 +45,6 @@ template <class FD>
 class NonInteractiveProofSimpleEncCommit : public SimpleEncCommitBase_<FD>
 {
 protected:
-    typedef fixint<GFP_MOD_SZ> S;
-
     const PlayerBase& P;
     const FHE_PK& pk;
     const FD& FTD;
@@ -60,20 +58,22 @@ public:
 #ifdef LESS_ALLOC_MORE_MEM
     Proof::Randomness r;
     Prover<FD, Plaintext_<FD> > prover;
-    Verifier<FD,S> verifier;
+    Verifier<FD> verifier;
 #endif
 
     map<string, Timer>& timers;
 
     NonInteractiveProofSimpleEncCommit(const PlayerBase& P, const FHE_PK& pk,
             const FD& FTD, map<string, Timer>& timers,
-				       const MachineBase& machine);
+				       const MachineBase& machine, bool diagonal = false);
     virtual ~NonInteractiveProofSimpleEncCommit() {}
-    size_t generate_proof(AddableVector<Ciphertext>& c, vector<Plaintext_<FD> >& m,
-            octetStream& ciphertexts, octetStream& cleartexts);
+    size_t generate_proof(AddableVector<Ciphertext>& c,
+            vector<Plaintext_<FD> >& m, octetStream& ciphertexts,
+            octetStream& cleartexts);
     size_t create_more(octetStream& my_ciphertext, octetStream& my_cleartext);
     virtual size_t report_size(ReportType type);
     using SimpleEncCommitBase_<FD>::report_size;
+    Proof& get_proof() { return proof; }
 };
 
 template <class FD>
@@ -92,12 +92,14 @@ protected:
     virtual void create_more() = 0;
 
 public:
-    SimpleEncCommitFactory(const FHE_PK& pk, const FD& FTD, const MachineBase& machine);
+    SimpleEncCommitFactory(const FHE_PK& pk, const FD& FTD,
+            const MachineBase& machine, bool diagonal = false);
     virtual ~SimpleEncCommitFactory();
     bool has_left() { return cnt >= 0; }
     void next(Plaintext_<FD>& mess, Ciphertext& C);
     virtual size_t report_size(ReportType type);
     void report_size(ReportType type, MemoryUsage& res);
+    virtual Proof& get_proof() = 0;
 };
 
 template<class T,class FD,class S>
@@ -113,13 +115,15 @@ protected:
 
 public:
     SimpleEncCommit(const PlayerBase& P, const FHE_PK& pk, const FD& FTD,
-            map<string, Timer>& timers, const MachineBase& machine, int thread_num);
+            map<string, Timer>& timers, const MachineBase& machine,
+            int thread_num, bool diagonal = false);
     void next(Plaintext_<FD>& mess, Ciphertext& C) { SimpleEncCommitFactory<FD>::next(mess, C); }
     void create_more();
     size_t report_size(ReportType type)
     { return SimpleEncCommitFactory<FD>::report_size(type) + EncCommitBase_<FD>::report_size(type); }
     void report_size(ReportType type, MemoryUsage& res)
     { SimpleEncCommitFactory<FD>::report_size(type, res); SimpleEncCommitBase_<FD>::report_size(type, res); }
+    Proof& get_proof() { return NonInteractiveProofSimpleEncCommit<FD>::get_proof(); }
 };
 
 template <class FD>
@@ -129,8 +133,6 @@ template <class FD>
 class SummingEncCommit: public SimpleEncCommitFactory<FD>,
         public SimpleEncCommitBase_<FD>
 {
-    typedef fixint<GFP_MOD_SZ> S;
-
     InteractiveProof proof;
     const FHE_PK& pk;
     const FD& FTD;
@@ -139,7 +141,7 @@ class SummingEncCommit: public SimpleEncCommitFactory<FD>,
 
 #ifdef LESS_ALLOC_MORE_MEM
     Prover<FD, Plaintext_<FD> > prover;
-    Verifier<FD,S> verifier;
+    Verifier<FD> verifier;
     Proof::Preimages preimages;
 #endif
 
@@ -150,13 +152,15 @@ public:
     map<string, Timer>& timers;
 
     SummingEncCommit(const Player& P, const FHE_PK& pk, const FD& FTD,
-            map<string, Timer>& timers, const MachineBase& machine, int thread_num);
+            map<string, Timer>& timers, const MachineBase& machine,
+            int thread_num, bool diagonal = false);
 
     void next(Plaintext_<FD>& mess, Ciphertext& C) { SimpleEncCommitFactory<FD>::next(mess, C); }
     void create_more();
     size_t report_size(ReportType type);
     void report_size(ReportType type, MemoryUsage& res)
     { SimpleEncCommitFactory<FD>::report_size(type, res); SimpleEncCommitBase_<FD>::report_size(type, res); }
+    Proof& get_proof() { return proof; }
 };
 
 template <class FD>
@@ -183,7 +187,7 @@ public:
     MultiEncCommit(const Player& P, const vector<FHE_PK>& pks,
             const FD& FTD,
             map<string, Timer>& timers, MachineBase& machine,
-            PairwiseGenerator<FD>& generator);
+            PairwiseGenerator<FD>& generator, bool diagonal = false);
 };
 
 #endif /* FHEOFFLINE_SIMPLEENCCOMMIT_H_ */

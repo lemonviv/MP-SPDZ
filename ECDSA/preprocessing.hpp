@@ -13,7 +13,6 @@
 #include "Protocols/MaliciousShamirShare.h"
 #include "Protocols/Rep3Share.h"
 #include "GC/TinierSecret.h"
-#include "GC/TinierPrep.h"
 #include "GC/MaliciousCcdSecret.h"
 #include "GC/TinyMC.h"
 
@@ -121,24 +120,11 @@ void check(vector<EcTuple<T>>& tuples, T<P256Element::Scalar> sk,
     for (auto& tuple : tuples)
     {
         auto inv_k = MC.open(tuple.a, P);
-        auto k = inv_k;
-        k.invert();
+        auto k = inv_k.invert();
         assert(open_sk * inv_k == MC.open(tuple.b, P));
         assert(tuple.R == k);
     }
     MC.Check(P);
-}
-
-template<>
-void ReplicatedPrep<Rep3Share<P256Element::Scalar>>::buffer_bits()
-{
-    throw not_implemented();
-}
-
-template<>
-void ReplicatedPrep<ShamirShare<P256Element::Scalar>>::buffer_bits()
-{
-    throw not_implemented();
 }
 
 #endif /* ECDSA_PREPROCESSING_HPP_ */

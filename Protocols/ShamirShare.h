@@ -31,15 +31,17 @@ public:
     typedef GC::NoShare mac_share_type;
 
     typedef Shamir<ShamirShare> Protocol;
-    typedef ShamirMC<ShamirShare> MAC_Check;
-    typedef MAC_Check Direct_MC;
+    typedef IndirectShamirMC<ShamirShare> MAC_Check;
+    typedef ShamirMC<ShamirShare> Direct_MC;
     typedef ShamirInput<ShamirShare> Input;
     typedef ::PrivateOutput<ShamirShare> PrivateOutput;
     typedef ReplicatedPrep<ShamirShare> LivePrep;
     typedef ReplicatedRingPrep<ShamirShare> TriplePrep;
     typedef ShamirShare Honest;
 
-    typedef GC::CcdSecret<gf2n_short> bit_type;
+#ifndef NO_MIXED_CIRCUITS
+    typedef GC::CcdSecret<gf2n_<octet>> bit_type;
+#endif
 
     const static bool needs_ot = false;
     const static bool dishonest_majority = false;
@@ -48,7 +50,11 @@ public:
 
     static string type_short()
     {
-        return "S" + string(1, clear::type_char());
+        auto res = "S" + string(1, clear::type_char());
+        auto opts = ShamirOptions::singleton;
+        if (opts.threshold != (opts.nparties - 1) / 2)
+            res += "T" + to_string(opts.threshold);
+        return res;
     }
     static string type_string()
     {
@@ -93,15 +99,6 @@ public:
     void assign(const char* buffer)
     {
         T::assign(buffer);
-    }
-
-    void add(const ShamirShare& x, const ShamirShare& y)
-    {
-        *this = x + y;
-    }
-    void sub(const ShamirShare& x, const ShamirShare& y)
-    {
-        *this = x - y;
     }
 
     void add(const ShamirShare& S, const clear aa, int my_num,

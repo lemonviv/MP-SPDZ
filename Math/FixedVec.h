@@ -22,6 +22,7 @@ template<class T> class Replicated;
 template <class T, int L>
 class FixedVec
 {
+    typedef FixedVec This;
     array<T, L> v;
 
 public:
@@ -34,6 +35,11 @@ public:
     {
         return L * T::size();
     }
+    static int size_in_bits()
+    {
+        return L * T::size_in_bits();
+    }
+
     static string type_string()
     {
         return T::type_string() + "^" + to_string(L);
@@ -41,10 +47,6 @@ public:
     static string type_short()
     {
         return string(1, T::type_char());
-    }
-    static DataFieldType field_type()
-    {
-        return T::field_type();
     }
 
     template<class U, class V>
@@ -56,7 +58,7 @@ public:
         return res;
     }
 
-    FixedVec<T, L>(const T& other = 0)
+    FixedVec<T, L>(const T& other = {})
     {
         for (auto& x : v)
             x = other;
@@ -128,12 +130,7 @@ public:
     void mul(const FixedVec<T, L>& x, const FixedVec<T, L>& y)
     {
         for (int i = 0; i < L; i++)
-            v[i].mul(x.v[i], y.v[i]);
-    }
-
-    void add(const FixedVec<T, L>& x)
-    {
-        add(*this, x);
+            v[i] = (x.v[i] * y.v[i]);
     }
 
     void add(octetStream& os)
@@ -225,7 +222,7 @@ public:
 
     FixedVec<T, L>& operator+=(const FixedVec<T, L>& other)
     {
-        add(other);
+        add(*this, other);
         return *this;
     }
 
@@ -277,6 +274,12 @@ public:
         return res;
     }
 
+    FixedVec<T, L>& operator<<=(int i)
+    {
+        *this = *this << i;
+        return *this;
+    }
+
     FixedVec<T, L>& operator>>=(int i)
     {
         *this = *this >> i;
@@ -300,19 +303,29 @@ public:
         return res;
     }
 
-    FixedVec<T, L> extend_bit() const
+    void extend_bit(This& res, int n_bits) const
     {
-        FixedVec<T, L> res;
         for (int i = 0; i < L; i++)
-            res[i] = v[i].extend_bit();
+            v[i].extend_bit(res[i], n_bits);
+    }
+
+    void mask(This& res, int n_bits) const
+    {
+        for (int i = 0; i < L; i++)
+            v[i].mask(res[i], n_bits);
+    }
+
+    This extend_bit() const
+    {
+        This res;
+        extend_bit(res, T::N_BITS);
         return res;
     }
 
-    FixedVec<T, L> mask(int n_bits) const
+    This mask(int n_bits) const
     {
-        FixedVec<T, L> res;
-        for (int i = 0; i < L; i++)
-            res[i] = v[i].mask(n_bits);
+        This res;
+        mask(res, n_bits);
         return res;
     }
 

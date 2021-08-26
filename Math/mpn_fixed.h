@@ -9,10 +9,10 @@
 #include <mpir.h>
 #include <string.h>
 #include <assert.h>
-#include <x86intrin.h>
 
 #include "Tools/avx_memcpy.h"
 #include "Tools/cpu_support.h"
+#include "Tools/intrinsics.h"
 
 inline void inline_mpn_zero(mp_limb_t* x, mp_size_t size)
 {
@@ -50,13 +50,11 @@ inline void mpn_add_fixed_n<1>(mp_limb_t* res, const mp_limb_t* x, const mp_limb
     *res = *x + *y;
 }
 
+#ifdef __x86_64__
 template <>
 inline void mpn_add_fixed_n<2>(mp_limb_t* res, const mp_limb_t* x, const mp_limb_t* y)
 {
     memcpy(res, y, 2 * sizeof(mp_limb_t));
-    debug_print("x", x, 2);
-    debug_print("y", y, 2);
-    debug_print("res", res, 2);
     __asm__ (
             "add %2, %0 \n"
             "adc %3, %1 \n"
@@ -64,16 +62,12 @@ inline void mpn_add_fixed_n<2>(mp_limb_t* res, const mp_limb_t* x, const mp_limb
             : "rm"(x[0]), "rm"(x[1])
             : "cc"
     );
-    debug_print("res", res, 2);
 }
 
 template <>
 inline void mpn_add_fixed_n<3>(mp_limb_t* res, const mp_limb_t* x, const mp_limb_t* y)
 {
     memcpy(res, y, 3 * sizeof(mp_limb_t));
-    debug_print("x", x, 3);
-    debug_print("y", y, 3);
-    debug_print("res", res, 3);
     __asm__ (
             "add %3, %0 \n"
             "adc %4, %1 \n"
@@ -82,7 +76,6 @@ inline void mpn_add_fixed_n<3>(mp_limb_t* res, const mp_limb_t* x, const mp_limb
             : "rm"(x[0]), "rm"(x[1]), "rm"(x[2])
             : "cc"
     );
-    debug_print("res", res, 3);
 }
 
 template <>
@@ -99,6 +92,16 @@ inline void mpn_add_fixed_n<4>(mp_limb_t* res, const mp_limb_t* x, const mp_limb
             : "cc"
     );
 }
+#endif
+
+#ifdef __clang__
+inline char clang_add_carry(char carryin, unsigned long x, unsigned long y, unsigned long& res)
+{
+	unsigned long carryout;
+	res = __builtin_addcl(x, y, carryin, &carryout);
+	return carryout;
+}
+#endif
 
 inline mp_limb_t mpn_add_n_with_carry(mp_limb_t* res, const mp_limb_t* x, const mp_limb_t* y, int n)
 {
@@ -109,14 +112,10 @@ inline mp_limb_t mpn_add_n_with_carry(mp_limb_t* res, const mp_limb_t* x, const 
     {
         char carry = 0;
         for (int i = 0; i < n; i++)
-#if defined(__clang__)
-#if __has_builtin(__builtin_ia32_addcarryx_u64) && defined(__ADX__)
-            carry = __builtin_ia32_addcarryx_u64(carry, x[i], y[i], (unsigned long long*)&res[i]);
-#else
-            carry = __builtin_ia32_addcarry_u64(carry, x[i], y[i], (unsigned long long*)&res[i]);
-#endif
-#else
+#if defined(__ADX__)
             carry = _addcarryx_u64(carry, x[i], y[i], (unsigned long long*)&res[i]);
+#else
+            carry = clang_add_carry(carry, x[i], y[i], res[i]);
 #endif
         return carry;
     }
@@ -136,16 +135,15 @@ mp_limb_t mpn_add_fixed_n_with_carry(mp_limb_t* res, const mp_limb_t* x, const m
 
 inline mp_limb_t mpn_sub_n_borrow(mp_limb_t* res, const mp_limb_t* x, const mp_limb_t* y, int n)
 {
-#ifndef __clang__
-#if __GNUC__ < 7
+#if (!defined(__clang__) && (__GNUC__ < 7)) || !defined(__x86_64__)
     // GCC 6 can't handle the code below
     return mpn_sub_n(res, x, y, n);
-#endif
-#endif
+#else
     char borrow = 0;
     for (int i = 0; i < n; i++)
         borrow = _subborrow_u64(borrow, x[i], y[i], (unsigned long long*)&res[i]);
     return borrow;
+#endif
 }
 
 template <int N>
@@ -166,6 +164,7 @@ inline void mpn_sub_fixed_n<1>(mp_limb_t* res, const mp_limb_t* x, const mp_limb
     *res = *x - *y;
 }
 
+#ifdef __x86_64__
 template <>
 inline mp_limb_t mpn_sub_fixed_n_borrow<1>(mp_limb_t* res, const mp_limb_t* x, const mp_limb_t* y)
 {
@@ -238,6 +237,7 @@ inline void mpn_sub_fixed_n<4>(mp_limb_t* res, const mp_limb_t* x, const mp_limb
             : "cc"
     );
 }
+#endif
 
 inline void mpn_add_n_use_fixed(mp_limb_t* res, const mp_limb_t* x, const mp_limb_t* y, mp_size_t n)
 {
@@ -263,20 +263,15 @@ template <int L, int M, bool ADD>
 inline void mpn_addmul_1_fixed__(mp_limb_t* res, const mp_limb_t* y, mp_limb_t x)
 {
     mp_limb_t lower[L], higher[L];
-    lower[L - 1] = 0;
-    higher[L - 1] = 0;
+    inline_mpn_zero(higher + M, L - M);
+    inline_mpn_zero(lower + M, L - M);
     for (int j = 0; j < M; j++)
         lower[j] = _mulx_u64(x, y[j], (long long unsigned*)higher + j);
-    debug_print("lower", lower, L);
-    debug_print("higher", higher, L);
-    debug_print("before add", res, L + 1);
     if (ADD)
         mpn_add_fixed_n<L>(res, lower, res);
     else
         inline_mpn_copyi(res, lower, L);
-    debug_print("first add", res, L + 1);
     mpn_add_fixed_n<L - 1>(res + 1, higher, res + 1);
-    debug_print("second add", res, L + 1);
 }
 
 template <int L, int M>

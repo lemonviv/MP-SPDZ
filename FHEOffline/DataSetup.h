@@ -34,12 +34,22 @@ public:
     return "GlobalParams-" + T::type_string();
   }
 
+  static string protocol_name(bool covert)
+  {
+    if (covert)
+      return "ChaiGear";
+    else
+      return "HighGear";
+  }
+
   PartSetup();
   void generate_setup(int n_parties, int plaintext_length, int sec, int slack,
       bool round_up);
 
-  void fake(vector<FHE_SK>& sks, vector<T>& alphais, int nplayers, bool distributed = true);
-  void fake(vector<PartSetup<FD> >& setups, int nplayers, bool distributed = true);
+  void fake(vector<FHE_SK>& sks, vector<T>& alphais, int nplayers,
+      bool distributed = true, bool check_security = true);
+  void fake(vector<PartSetup<FD> >& setups, int nplayers,
+      bool distributed = true, bool check_security = true);
   void insecure_debug_keys(vector<PartSetup<FD> >& setups, int nplayers, bool simple_pk);
 
   void pack(octetStream& os);
@@ -56,9 +66,13 @@ public:
       int sec);
   void check(Player& P, MachineBase& machine);
 
-  void covert_key_generation(Player& P, int num_runs);
-  void covert_mac_generation(Player& P, int num_runs);
-  void covert_secrets_generation(Player& P, MachineBase& machine, int num_runs);
+  void covert_key_generation(Player& P, MachineBase&, int num_runs);
+  void covert_mac_generation(Player& P, MachineBase&, int num_runs);
+
+  void key_and_mac_generation(Player& P, MachineBase& machine, int num_runs,
+      false_type);
+  void key_and_mac_generation(Player& P, MachineBase& machine, int num_runs,
+      true_type);
 
   void output(Names& N);
 };

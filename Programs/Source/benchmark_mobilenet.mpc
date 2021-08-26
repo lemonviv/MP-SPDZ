@@ -1,4 +1,11 @@
-import ml
+import ml, sys
+
+if len(program.args) < 2:
+   print("You need to identify a concrete network such as 'v1_0.25_128'.",
+         file=sys.stderr)
+   print("Refer to https://github.com/anderspkd/SecureQ8 for scripts to run "
+         "this benchmark.", file=sys.stderr)
+   exit(1)
 
 network = program.args[1]
 
@@ -49,6 +56,8 @@ if 'cisc' in program.args:
 
 if len(program.args) > 3:
    ml.QuantBase.n_threads = int(program.args[3])
+
+program.disable_memory_warnings()
 
 from ml import *
 

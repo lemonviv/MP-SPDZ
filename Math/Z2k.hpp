@@ -9,6 +9,8 @@
 #include <Math/Z2k.h>
 #include "Math/Integer.h"
 
+#include <math.h>
+
 template<int K>
 const int Z2<K>::N_BITS;
 template<int K>
@@ -57,7 +59,7 @@ Z2<K>::Z2(const bigint& x) : Z2()
 template<int K>
 template<class T>
 Z2<K>::Z2(const IntBase<T>& x) :
-        Z2((uint64_t)x.get())
+        Z2((mp_limb_t)x.get())
 {
 }
 
@@ -68,10 +70,38 @@ bool Z2<K>::get_bit(int i) const
 }
 
 template<int K>
+int Z2<K>::bit_length() const
+{
+    if (is_zero())
+        return 1;
+    size_t max_limb = 0;
+    for (int i = 1; i < N_WORDS; i++)
+        if (a[i] != 0)
+            max_limb = i;
+    return log2(mp_limb_t(a[max_limb])) + 1 + 64 * max_limb;
+}
+
+template<int K>
 Z2<K> Z2<K>::operator&(const Z2<K>& other) const
 {
     Z2<K> res;
-    res.AND(*this, other);
+    mpn_and_n(res.a, a, other.a, N_WORDS);
+    return res;
+}
+
+template<int K>
+Z2<K> Z2<K>::operator^(const Z2<K>& other) const
+{
+    Z2<K> res;
+	mpn_xor_n(res.a, a, other.a, N_WORDS);
+    return res;
+}
+
+template<int K>
+Z2<K> Z2<K>::operator|(const Z2<K>& other) const
+{
+    Z2<K> res;
+	mpn_ior_n(res.a, a, other.a, N_WORDS);
     return res;
 }
 
@@ -86,7 +116,7 @@ bool Z2<K>::operator==(const Z2<K>& other) const
 }
 
 template<int K>
-Z2<K>& Z2<K>::invert()
+Z2<K> Z2<K>::invert() const
 {
     if (get_bit(0) != 1)
         throw division_by_zero();
@@ -96,8 +126,7 @@ Z2<K>& Z2<K>::invert()
     {
         res += Z2<K>((Z2<K>(1) - Z2<K>::Mul(*this, res)).get_bit(i)) << i;
     }
-    *this = res;
-    return *this;
+    return res;
 }
 
 template<int K>
@@ -113,24 +142,6 @@ Z2<K> Z2<K>::sqrRoot()
 #endif
 	}
 	return res;
-}
-
-template<int K>
-void Z2<K>::AND(const Z2<K>& x, const Z2<K>& y)
-{
-	mpn_and_n(a, x.a, y.a, N_WORDS);
-}
-
-template<int K>
-void Z2<K>::OR(const Z2<K>& x, const Z2<K>& y)
-{
-	mpn_ior_n(a, x.a, y.a, N_WORDS);
-}
-
-template<int K>
-void Z2<K>::XOR(const Z2<K>& x, const Z2<K>& y)
-{
-	mpn_xor_n(a, x.a, y.a, N_WORDS);
 }
 
 template<int K>

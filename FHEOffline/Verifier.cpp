@@ -1,8 +1,11 @@
 #include "Verifier.h"
+#include "FHE/P2Data.h"
 #include "Math/Z2k.hpp"
+#include "Math/modp.hpp"
 
-template <class FD, class S>
-Verifier<FD,S>::Verifier(Proof& proof) : P(proof)
+template <class FD>
+Verifier<FD>::Verifier(Proof& proof, const FD& FieldD) :
+    P(proof), FieldD(FieldD)
 {
 #ifdef LESS_ALLOC_MORE_MEM
   z.resize(proof.phim);
@@ -22,28 +25,47 @@ bool Check_Decoding(const Plaintext<T,FD,S>& AE,bool Diag)
 //      return false;
 //    }
   if (Diag && !AE.is_diagonal())
-    { cout << "Fail Check 5 " << endl;
+    {
+#ifdef VERBOSE
+      cout << "Fail Check 5 " << endl;
+#endif
       return false;
     }
   return true;
 }
 
-template <class S>
-bool Check_Decoding(const vector<S>& AE, bool Diag)
+template <>
+bool Check_Decoding(const vector<Proof::bound_type>& AE, bool Diag, const FFT_Data&)
 {
-  (void)AE;
   if (Diag)
-    throw not_implemented();
+    {
+      for (size_t i = 1; i < AE.size(); i++)
+        if (AE[i] != 0)
+          return false;
+    }
+  return true;
+}
+
+template <>
+bool Check_Decoding(const vector<Proof::bound_type>& AE, bool Diag, const P2Data& p2d)
+{
+  if (Diag)
+    {
+      Plaintext_<P2Data> tmp(p2d);
+      for (size_t i = 0; i < AE.size(); i++)
+        tmp.set_coeff(i, AE[i].get_limb(0) % 2);
+      return tmp.is_diagonal();
+    }
   return true;
 }
 
 
 
-template <class FD, class S>
-void Verifier<FD,S>::Stage_2(
+template <class FD>
+void Verifier<FD>::Stage_2(
                           AddableVector<Ciphertext>& c,octetStream& ciphertexts,
                           octetStream& cleartexts,
-                          const FHE_PK& pk,bool Diag,bool binary)
+                          const FHE_PK& pk)
 {
   unsigned int i, V;
 
@@ -71,23 +93,19 @@ void Verifier<FD,S>::Stage_2(
       rc.assign(t[0], t[1], t[2]);
       pk.encrypt(d2,z,rc);
       if (!(d1 == d2))
-        { cout << "Fail Check 6 " << i << endl; 
+        {
+#ifdef VERBOSE
+          cout << "Fail Check 6 " << i << endl;
+#endif
           throw runtime_error("ciphertexts don't match");
         }
-    }
-
-  // Now check decoding z[i]
-  for (i=0; i<V; i++)
-    {
-      if (!Check_Decoding(z,Diag))
-         { cout << "\tCheck : " << i << endl; 
+      if (!Check_Decoding(z,P.get_diagonal(),FieldD))
+         {
+#ifdef VERBOSE
+          cout << "\tCheck : " << i << endl;
+#endif
            throw runtime_error("cleartext isn't diagonal");
          }
-      if (binary && !z.is_binary())
-        {
-          cout << "Not binary " << i << endl;
-          throw runtime_error("cleartext isn't binary");
-        }
     }
 }
 
@@ -95,24 +113,22 @@ void Verifier<FD,S>::Stage_2(
 
 /* This is the non-interactive version using the ROM
 */
-template <class FD, class S>
-void Verifier<FD,S>::NIZKPoK(AddableVector<Ciphertext>& c,
+template <class FD>
+void Verifier<FD>::NIZKPoK(AddableVector<Ciphertext>& c,
                           octetStream& ciphertexts, octetStream& cleartexts,
-                          const FHE_PK& pk,bool Diag,
-                          bool binary)
+                          const FHE_PK& pk)
 {
   P.set_challenge(ciphertexts);
 
-  Stage_2(c,ciphertexts,cleartexts,pk,Diag,binary);
+  Stage_2(c,ciphertexts,cleartexts,pk);
 
   if (P.top_gear)
     {
-      assert(not Diag);
-      assert(not binary);
+      assert(not P.get_diagonal());
       c += c;
     }
 }
 
 
-template class Verifier<FFT_Data, fixint<GFP_MOD_SZ>>;
-template class Verifier<P2Data, fixint<GFP_MOD_SZ>>;
+template class Verifier<FFT_Data>;
+template class Verifier<P2Data>;

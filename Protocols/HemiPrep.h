@@ -33,9 +33,9 @@ public:
             SemiHonestRingPrep<T>(proc, usage)
     {
     }
+    ~HemiPrep();
 
     void buffer_triples();
-    void buffer_inverses();
 };
 
 #endif /* PROTOCOLS_HEMIPREP_H_ */

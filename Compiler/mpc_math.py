@@ -3,7 +3,7 @@ Module for math operations.
 
 Implements trigonometric and logarithmic functions.
 
-This has to imported explicitely.
+This has to imported explicitly.
 """
 
 
@@ -34,7 +34,12 @@ p_3508 = [1.00000000000000000000, -0.50000000000000000000,
           0.00000000000000000040]
 ##
 # @private
-p_1045 = [math.log(2) ** i / math.factorial(i) for i in range(12)]
+p_1045 = [math.log(2) ** i / math.factorial(i) for i in range(100)]
+
+p_2508 = [-4.585323876456, 18.351352559641, -51.525644374262,
+          111.76784165654, -174.170840774074, 191.731001033848,
+          -145.61191979671, 72.650082977468, -21.447349196774,
+          2.840799797315]
 
 ##
 # @private
@@ -270,6 +275,18 @@ def exp2_fx(a, zero_output=False):
 
     :return: :math:`2^a` if it is within the range. Undefined otherwise
     """
+    def exp_from_parts(whole_exp, frac):
+        class my_fix(type(a)):
+            pass
+        # improve precision
+        my_fix.set_precision(a.k - 2, a.k)
+        n_shift = a.k - 2 - a.f
+        x = my_fix._new(frac.v << n_shift)
+        # evaluates fractional part of a in p_1045
+        e = p_eval(p_1045, x)
+        g = a._new(whole_exp.TruncMul(e.v, 2 * a.k, n_shift,
+                                           nearest=a.round_nearest), a.k, a.f)
+        return g
     if types.program.options.ring:
         sint = types.sint
         intbitint = types.intbitint
@@ -352,8 +369,7 @@ def exp2_fx(a, zero_output=False):
         assert(len(higher_bits) == n_bits - a.f)
         pow2_bits = [sint.conv(x) for x in higher_bits]
         d = floatingpoint.Pow2_from_bits(pow2_bits)
-        e = p_eval(p_1045, c)
-        g = d * e
+        g = exp_from_parts(d, c)
         small_result = types.sfix._new(g.v.round(a.f + 2 ** n_int_bits,
                                             2 ** n_int_bits, signed=False,
                                             nearest=types.sfix.round_nearest),
@@ -371,15 +387,13 @@ def exp2_fx(a, zero_output=False):
         c = a - b
         # squares integer part of a
         d = b.pow2(a.k - a.f)
-        # evaluates fractional part of a in p_1045
-        e = p_eval(p_1045, c)
-        g = d * e
+        g = exp_from_parts(d, c)
         return s.if_else(1 / g, g)
 
 
 @types.vectorize
 @instructions_base.sfix_cisc
-def log2_fx(x):
+def log2_fx(x, use_division=True):
     """
     Returns the result of :math:`\log_2(x)` for any unbounded
     number. This is achieved by changing :py:obj:`x` into
@@ -407,10 +421,14 @@ def log2_fx(x):
     # isolates mantisa of d, now the n can be also substituted by the
     # secret shared p from d in the expresion above.
     # polynomials for the  log_2 evaluation of f are calculated
-    P = p_eval(p_2524, v)
-    Q = p_eval(q_2524, v)
+    if use_division:
+        P = p_eval(p_2524, v)
+        Q = p_eval(q_2524, v)
+        approx = P / Q
+    else:
+        approx = p_eval(p_2508, v)
     # the log is returned by adding the result of the division plus p.
-    a = P / Q + (vlen + p)
+    a = approx + (vlen + p)
     return a  # *(1-(f.z))*(1-f.s)*(1-f.error)
 
 
@@ -601,6 +619,10 @@ def sqrt_simplified_fx(x):
     r = (3 / 2.0) - gh
     h = h * r
     H = 4 * (h * h)
+
+    if not x.round_nearest or (2 * f < k - 1):
+        H = (h < 2 ** (-x.f / 2) / 2).if_else(0, H)
+
     H = H * x
     H = (3) - H
     H = h * H
@@ -782,9 +804,10 @@ def atan(x):
     v_2 =v*v
 
     # range of polynomial coefficients
-    assert x.k - x.f >= 19
-    P = p_eval(p_5102, v_2)
-    Q = p_eval(q_5102, v_2)
+    m = max(sum(p_5102), sum(q_5102))
+    scale = m / (2 ** (x.k - x.f - 1) - 1)
+    P = p_eval([c / scale for c in p_5102], v_2)
+    Q = p_eval([c / scale for c in q_5102], v_2)
 
     # padding
     y = v * (P / Q)
@@ -823,3 +846,54 @@ def acos(x):
     """
     y = asin(x)
     return pi_over_2 - y
+
+
+def tanh(x):
+    """
+    Hyperbolic tangent. For efficiency, accuracy is diminished
+    around :math:`\pm \log(k - f - 2) / 2` where :math:`k` and
+    :math:`f` denote the fixed-point parameters.
+    """
+    limit = math.log(2 ** (x.k - x.f - 2)) / 2
+    s = x < -limit
+    t = x > limit
+    y = pow_fx(math.e, 2 * x)
+    return s.if_else(-1, t.if_else(1, (y - 1) / (y + 1)))
+
+
+# next functions due to https://dl.acm.org/doi/10.1145/3411501.3419427
+
+def Sep(x):
+    b = floatingpoint.PreOR(list(reversed(x.v.bit_decompose(x.k, maybe_mixed=True))))
+    t = x.v * (1 + x.v.bit_compose(b_i.bit_not() for b_i in b[-2 * x.f + 1:]))
+    u = types.sfix._new(t.right_shift(x.f, 2 * x.k, signed=False))
+    b += [b[0].long_one()]
+    return u, [b[i + 1] - b[i] for i in reversed(range(x.k))]
+
+def SqrtComp(z, old=False):
+    f = types.sfix.f
+    k = len(z)
+    if isinstance(z[0], types.sint):
+        return types.sfix._new(sum(z[i] * types.cfix(
+            2 ** (-(i - f + 1) / 2)).v for i in range(k)))
+    k_prime = k // 2
+    f_prime = f // 2
+    c1 = types.sfix(2 ** ((f + 1) / 2 + 1))
+    c0 = types.sfix(2 ** (f / 2 + 1))
+    a = [z[2 * i].bit_or(z[2 * i + 1]) for i in range(k_prime)]
+    tmp = types.sfix._new(types.sint.bit_compose(reversed(a[:2 * f_prime])))
+    if old:
+        b = sum(types.sint.conv(zi).if_else(i, 0) for i, zi in enumerate(z)) % 2
+    else:
+        b = util.tree_reduce(lambda x, y: x.bit_xor(y), z[::2])
+    return types.sint.conv(b).if_else(c1, c0) * tmp
+
+@types.vectorize
+def InvertSqrt(x, old=False):
+    """
+    Reciprocal square root approximation by `Lu et al.
+    <https://dl.acm.org/doi/10.1145/3411501.3419427>`_
+    """
+    u, z = Sep(x)
+    c = 3.14736 + u * (4.63887 * u - 5.77789)
+    return c * SqrtComp(z, old=old)

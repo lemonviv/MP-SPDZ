@@ -44,10 +44,13 @@ public:
 template <class T>
 class ProtocolBase
 {
-    virtual void buffer_random() { not_implemented(); }
+    virtual void buffer_random() { throw not_implemented(); }
 
 protected:
     vector<T> random;
+
+    int trunc_pr_counter;
+    int rounds, trunc_rounds;
 
 public:
     typedef T share_type;
@@ -70,6 +73,7 @@ public:
     virtual typename T::clear prepare_mul(const T& x, const T& y, int n = -1) = 0;
     virtual void exchange() = 0;
     virtual T finalize_mul(int n = -1) = 0;
+    virtual void finalize_mult(T& res, int n = -1);
 
     void init_dotprod(SubProcessor<T>* proc) { init_mul(proc); }
     void prepare_dotprod(const T& x, const T& y) { prepare_mul(x, y); }
@@ -88,12 +92,15 @@ public:
     virtual void stop_exchange() {}
 
     virtual void check() {}
+
+    virtual void cisc(SubProcessor<T>&, const Instruction&)
+    { throw runtime_error("CISC instructions not implemented"); }
 };
 
 template <class T>
 class Replicated : public ReplicatedBase, public ProtocolBase<T>
 {
-    vector<octetStream> os;
+    array<octetStream, 2> os;
     PointerVector<typename T::clear> add_shares;
     typename T::clear dotprod_share;
 
@@ -130,7 +137,8 @@ public:
     void next_dotprod();
     T finalize_dotprod(int length);
 
-    void trunc_pr(const vector<int>& regs, int size, SubProcessor<T>& proc);
+    template<class U>
+    void trunc_pr(const vector<int>& regs, int size, U& proc);
 
     T get_random();
     void randoms(T& res, int n_bits);

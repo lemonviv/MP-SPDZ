@@ -12,6 +12,7 @@
 #include "PairwiseSetup.h"
 #include "Proof.h"
 #include "SimpleMachine.h"
+#include "PairwiseMachine.h"
 
 #include <iostream>
 using namespace std;
@@ -50,9 +51,10 @@ void PartSetup<FD>::generate_setup(int n_parties, int plaintext_length, int sec,
 
 template <class FD>
 void PartSetup<FD>::fake(vector<FHE_SK>& sks, vector<T>& alphais,
-        int nplayers, bool distributed)
+        int nplayers, bool distributed, bool check_security)
 {
-  insecure("global key generation");
+  if (check_security)
+    insecure("global key generation");
   if (distributed)
       cout << "Faking distributed key generation" << endl;
   else
@@ -91,11 +93,11 @@ void PartSetup<FD>::fake(vector<FHE_SK>& sks, vector<T>& alphais,
 
 template <class FD>
 void PartSetup<FD>::fake(vector<PartSetup<FD> >& setups, int nplayers,
-        bool distributed)
+        bool distributed, bool check_security)
 {
     vector<FHE_SK> sks;
     vector<T> alphais;
-    fake(sks, alphais, nplayers, distributed);
+    fake(sks, alphais, nplayers, distributed, check_security);
     setups.clear();
     setups.resize(nplayers, *this);
     for (int i = 0; i < nplayers; i++)
@@ -226,61 +228,24 @@ void PartSetup<FD>::check(Player& P, MachineBase& machine)
 }
 
 template<class FD>
-void PartSetup<FD>::covert_key_generation(Player& P, int num_runs)
+void PartSetup<FD>::covert_key_generation(Player& P, MachineBase&, int num_runs)
 {
     Run_Gen_Protocol(pk, sk, P, num_runs, false);
 }
 
 template<class FD>
-void PartSetup<FD>::covert_mac_generation(Player& P, int num_runs)
+void PartSetup<FD>::covert_mac_generation(Player& P, MachineBase&, int num_runs)
 {
     generate_mac_key(alphai, calpha, FieldD, pk, P,
             num_runs);
 }
 
 template<class FD>
-void PartSetup<FD>::covert_secrets_generation(Player& P, MachineBase& machine,
-        int num_runs)
+void PartSetup<FD>::key_and_mac_generation(Player& P,
+        MachineBase& machine, int num_runs, true_type)
 {
-    octetStream os;
-    params.pack(os);
-    FieldD.pack(os);
-    string filename = PREP_DIR "ChaiGear-Secrets-" + to_string(num_runs) + "-"
-            + os.check_sum(20).get_str(16) + "-P" + to_string(P.my_num()) + "-"
-            + to_string(P.num_players());
-
-    string error;
-
-    try
-    {
-        ifstream input(filename);
-        os.input(input);
-        unpack(os);
-    }
-    catch (exception& e)
-    {
-        error = e.what();
-    }
-
-    try
-    {
-        check(P, machine);
-    }
-    catch (mismatch_among_parties& e)
-    {
-        error = e.what();
-    }
-
-    if (not error.empty())
-    {
-        cerr << "Running secrets generation because " << error << endl;
-        covert_key_generation(P, num_runs);
-        covert_mac_generation(P, num_runs);
-        ofstream output(filename);
-        octetStream os;
-        pack(os);
-        os.output(output);
-    }
+    covert_key_generation(P, machine, num_runs);
+    covert_mac_generation(P, machine, num_runs);
 }
 
 template class PartSetup<FFT_Data>;

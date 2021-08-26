@@ -27,6 +27,9 @@ class modp_
 
   public: 
 
+  static const int MAX_N_BITS = 64 * L;
+  static const int N_LIMBS = L;
+
   // NEXT FUNCTION IS FOR DEBUG PURPOSES ONLY
   mp_limb_t get_limb(int i) const { return x[i]; }
 
@@ -42,9 +45,28 @@ class modp_
         inline_mpn_zero(x + M, L - M);
     }
 
+  template<int X, int M>
+  modp_(const gfp_<X, M>& other, const Zp_Data& ZpD) :
+      modp_()
+    {
+      assert(other.get_ZpD() == ZpD);
+      assert(M <= L);
+      inline_mpn_copyi(x, other.get().get(), M);
+    }
+
+  template<int X, int M>
+  modp_(const gfpvar_<X, M>& other, const Zp_Data& ZpD) :
+      modp_()
+    {
+      if (other.get_ZpD() == ZpD)
+        *this = other.get();
+      else
+        to_modp(*this, bigint(other), ZpD);
+    }
+
   const mp_limb_t* get() const { return x; }
 
-  void assign(const char* buffer, int t) { memcpy(x, buffer, t * sizeof(mp_limb_t)); }
+  void assign(const void* buffer, int t) { memcpy(x, buffer, t * sizeof(mp_limb_t)); }
 
   void convert(const mp_limb_t* source, mp_size_t size, const Zp_Data& ZpD,
       bool negative = false);
@@ -52,6 +74,8 @@ class modp_
   void convert_destroy(int source, const Zp_Data& ZpD) { to_modp(*this, source, ZpD); }
   template<int M>
   void convert_destroy(const fixint<M>& source, const Zp_Data& ZpD);
+
+  void zero_overhang(const Zp_Data& ZpD);
 
   void randomize(PRNG& G, const Zp_Data& ZpD);
 
@@ -81,7 +105,11 @@ class modp_
   void mul(const modp_& x, const modp_& y, const Zp_Data& ZpD);
 
   template<int M> friend void to_modp(modp_<M>& ans,int x,const Zp_Data& ZpD);
-  template<int M> friend void to_modp(modp_<M>& ans,const bigint& x,const Zp_Data& ZpD);
+  template<int M> friend void to_modp(modp_<M>& ans,const mpz_class& x,const Zp_Data& ZpD);
+
+  modp_ add(const modp_& other, const Zp_Data& ZpD) const;
+  modp_ sub(const modp_& other, const Zp_Data& ZpD) const;
+  modp_ mul(const modp_& other, const Zp_Data& ZpD) const;
 
   friend void Add(modp_& ans,const modp_& x,const modp_& y,const Zp_Data& ZpD)
     { ZpD.Add(ans.x, x.x, y.x); }
@@ -140,7 +168,7 @@ template<int L>
 inline void Mul(modp_<L>& ans,const modp_<L>& x,const modp_<L>& y,const Zp_Data& ZpD)
 {
   if (ZpD.montgomery)
-    { ZpD.Mont_Mult(ans.x,x.x,y.x); }
+    { ZpD.Mont_Mult_max(ans.x,x.x,y.x,L); }
   else
     { //ans.x=(x.x*y.x)%ZpD.pr;
       mp_limb_t aa[2*L],q[2*L];

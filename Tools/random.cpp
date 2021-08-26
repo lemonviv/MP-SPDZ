@@ -15,7 +15,7 @@ using namespace std;
 PRNG::PRNG() :
     cnt(0), n_cached_bits(0), cached_bits(0)
 {
-#ifdef __AES__
+#if defined(__AES__) || !defined(__x86_64__)
   #ifdef USE_AES
     useC=(Check_CPU_support_AES()==0);
   #endif
@@ -38,6 +38,28 @@ void PRNG::SeedGlobally(const PlayerBase& P)
   octet seed[SEED_SIZE];
   Create_Random_Seed(seed, P, SEED_SIZE);
   SetSeed(seed);
+}
+
+void PRNG::SeedGlobally(const Player& P, bool secure)
+{
+  if (secure)
+    SeedGlobally(static_cast<const PlayerBase&>(P));
+  else
+    {
+      octetStream os;
+      if (P.my_num() == 0)
+        {
+          randombytes_buf(seed, SEED_SIZE);
+          os.append(seed, SEED_SIZE);
+          P.send_all(os);
+        }
+      else
+        {
+          P.receive_player(0, os);
+          os.consume(seed, SEED_SIZE);
+        }
+      InitSeed();
+    }
 }
 
 void PRNG::SetSeed(const octet* inp)
@@ -72,7 +94,7 @@ void PRNG::InitSeed()
   #else
      memcpy(state,seed,SEED_SIZE*sizeof(octet));
   #endif
-  next(); 
+  hash();
   //cout << "SetSeed : "; print_state(); cout << endl;
 }
 
@@ -172,18 +194,6 @@ void PRNG::get_octetStream(octetStream& ans,int len)
 }
 
 
-template<int N_BYTES>
-void PRNG::randomBnd(mp_limb_t* res, const mp_limb_t* B, mp_limb_t mask)
-{
-  size_t n_limbs = (N_BYTES + sizeof(mp_limb_t) - 1) / sizeof(mp_limb_t);
-  do
-    {
-      get_octets<N_BYTES>((octet*) res);
-      res[n_limbs - 1] &= mask;
-    }
-  while (mpn_cmp(res, B, n_limbs) >= 0);
-}
-
 void PRNG::randomBnd(mp_limb_t* res, const mp_limb_t* B, size_t n_bytes, mp_limb_t mask)
 {
   switch (n_bytes)
@@ -229,13 +239,6 @@ void PRNG::randomBnd(bigint& x, const bigint& B, bool positive)
     }
 }
 
-template<>
-void PRNG::randomBnd(fixint<GFP_MOD_SZ>& x, const bigint& B, bool positive)
-{
-  randomBnd(bigint::tmp, B, positive);
-  x = bigint::tmp;
-}
-
 bigint PRNG::randomBnd(const bigint& B, bool positive)
 {
   bigint x;
@@ -266,20 +269,6 @@ template<>
 void PRNG::get(bigint& res, int n_bits, bool positive)
 {
   get_bigint(res, n_bits, positive);
-}
-
-template<>
-void PRNG::get(fixint<0>& res, int n_bits, bool positive)
-{
-  get(bigint::tmp, n_bits, positive);
-  res = bigint::tmp;
-}
-
-template<>
-void PRNG::get(fixint<GFP_MOD_SZ>& res, int n_bits, bool positive)
-{
-  get(bigint::tmp, n_bits, positive);
-  res = bigint::tmp;
 }
 
 template<>

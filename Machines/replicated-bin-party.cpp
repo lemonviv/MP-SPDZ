@@ -7,7 +7,6 @@
 
 #include "GC/ShareParty.hpp"
 #include "GC/ShareSecret.hpp"
-#include "GC/Instruction.hpp"
 #include "GC/Machine.hpp"
 #include "GC/Processor.hpp"
 #include "GC/Program.hpp"
@@ -21,5 +20,5 @@
 
 int main(int argc, const char** argv)
 {
-    GC::ShareParty<GC::SemiHonestRepSecret>(argc, argv);
+    GC::simple_binary_main<GC::SemiHonestRepSecret>(argc, argv);
 }

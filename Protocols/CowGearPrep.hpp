@@ -8,6 +8,7 @@
 #include "Tools/Bundle.h"
 
 #include "Protocols/ReplicatedPrep.hpp"
+#include "FHEOffline/DataSetup.hpp"
 
 template<class T>
 PairwiseMachine* CowGearPrep<T>::pairwise_machine = 0;
@@ -39,11 +40,13 @@ void CowGearPrep<T>::basic_setup(Player& P)
     auto& setup = machine.setup<FD>();
     auto& options = CowGearOptions::singleton;
 #ifdef VERBOSE
-    cerr << "Covert security parameter for key and MAC generation: "
-            << options.covert_security << endl;
+    if (T::covert)
+        cerr << "Covert security parameter for key and MAC generation: "
+                << options.covert_security << endl;
     cerr << "LowGear security parameter: " << options.lowgear_security << endl;
 #endif
     setup.secure_init(P, machine, T::clear::length(), options.lowgear_security);
+    T::clear::template init<typename FD::T>();
 #ifdef VERBOSE
     cerr << T::type_string() << " parameter setup took " << timer.elapsed()
             << " seconds" << endl;
@@ -65,15 +68,15 @@ void CowGearPrep<T>::key_setup(Player& P, mac_key_type alphai)
     auto& machine = *pairwise_machine;
     auto& setup = machine.setup<FD>();
     auto& options = CowGearOptions::singleton;
-    setup.covert_key_generation(P, machine, options.covert_security);
-    setup.covert_mac_generation(P, machine, options.covert_security);
+    read_or_generate_secrets(setup, P, machine,
+            options.covert_security, T::covert);
 
     // adjust mac key
     mac_key_type diff = alphai - setup.alphai;
     setup.set_alphai(alphai);
     Bundle<octetStream> bundle(P);
     diff.pack(bundle.mine);
-    P.Broadcast_Receive(bundle, true);
+    P.unchecked_broadcast(bundle);
     for (int i = 0; i < P.num_players(); i++)
     {
         Plaintext_<FD> mess(setup.FieldD);
@@ -132,13 +135,6 @@ void CowGearPrep<T>::buffer_triples()
 }
 
 template<class T>
-void CowGearPrep<T>::buffer_inverses()
-{
-    assert(this->proc != 0);
-    ::buffer_inverses(this->inverses, *this, this->proc->MC, this->proc->P);
-}
-
-template<class T>
 void CowGearPrep<T>::buffer_inputs(int player)
 {
     auto& generator = get_generator();
@@ -153,16 +149,24 @@ void CowGearPrep<T>::buffer_inputs(int player)
 #endif
 }
 
-template<>
-inline void CowGearPrep<CowGearShare<gfp>>::buffer_bits()
+template<class T>
+inline void CowGearPrep<T>::buffer_bits()
+{
+    buffer_bits<0>(T::clear::characteristic_two);
+}
+
+template<class T>
+template<int>
+void CowGearPrep<T>::buffer_bits(false_type)
 {
     buffer_bits_from_squares(*this);
 }
 
-template<>
-inline void CowGearPrep<CowGearShare<gf2n_short>>::buffer_bits()
+template<class T>
+template<int>
+void CowGearPrep<T>::buffer_bits(true_type)
 {
-    buffer_bits_without_check();
+    this->buffer_bits_without_check();
     assert(not this->bits.empty());
     for (auto& bit : this->bits)
         bit.force_to_bit();

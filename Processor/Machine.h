@@ -45,7 +45,11 @@ class Machine : public BaseMachine
   // Keep record of used offline data
   DataPositions pos;
 
-  void load_program(string threadname, string filename);
+  Player* P;
+
+  void load_program(const string& threadname, const string& filename);
+
+  void suggest_optimizations();
 
   public:
 
@@ -69,12 +73,14 @@ class Machine : public BaseMachine
   OnlineOptions opts;
 
   atomic<size_t> data_sent;
+  NamedCommStats comm_stats;
   ExecutionStats stats;
 
-  Machine(int my_number, Names& playerNames, string progname,
-      string memtype, int lg2, bool direct, int opening_sum,
+  Machine(int my_number, Names& playerNames, const string& progname,
+      const string& memtype, int lg2, bool direct, int opening_sum,
       bool receive_threads, int max_broadcast, bool use_encryption, bool live_prep,
       OnlineOptions opts);
+  ~Machine();
 
   const Names& get_N() { return N; }
 
@@ -91,9 +97,6 @@ class Machine : public BaseMachine
 
   template<class T>
   string prep_dir_prefix();
-
-  // Only for Player-Demo.cpp
-  Machine(Names& N = *(new Names())): N(N) {}
 
   void reqbl(int n);
 

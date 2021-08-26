@@ -40,8 +40,6 @@ void Server::get_ip(int num)
 
 void Server::get_name(int num)
 {
-  // Now all machines are set up, send GO to start them.
-  send(socket_num[num], GO);
 #ifdef DEBUG_NETWORKING
   cerr << "Player " << num << " started." << endl;
 #endif
@@ -65,7 +63,7 @@ void Server::send_names(int num)
   /* Now send the machine names back to each client 
    * and the number of machines
    */
-  send(socket_num[num],nmachines);
+  send(socket_num[num],nmachines,4);
   for (int i=0; i<nmachines; i++)
     {
       send(socket_num[num],names[i],512);
@@ -156,12 +154,11 @@ void Server::start()
 void* Server::start_in_thread(void* server)
 {
   ((Server*)server)->start();
-  pthread_detach(pthread_self());
   return 0;
 }
 
 Server* Server::start_networking(Names& N, int my_num, int nplayers,
-        string hostname, int portnum)
+        string hostname, int portnum, int my_port)
 {
 #ifdef DEBUG_NETWORKING
   cerr << "Starting networking for " << my_num << "/" << nplayers
@@ -170,12 +167,17 @@ Server* Server::start_networking(Names& N, int my_num, int nplayers,
   assert(my_num >= 0);
   assert(my_num < nplayers);
   Server* server = 0;
+  pthread_t thread;
   if (my_num == 0)
     {
-      pthread_t thread;
       pthread_create(&thread, 0, Server::start_in_thread,
           server = new Server(nplayers, portnum));
     }
-  N.init(my_num, portnum, Names::DEFAULT_PORT, hostname.c_str());
-  return server;
+  N.init(my_num, portnum, my_port, hostname.c_str());
+  if (my_num == 0)
+    {
+      pthread_join(thread, 0);
+      delete server;
+    }
+  return 0;
 }

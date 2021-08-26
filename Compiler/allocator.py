@@ -123,7 +123,7 @@ class StraightlineAllocator:
                 for x in itertools.chain(dup.duplicates, base.duplicates):
                     to_check.add(x)
 
-        free[reg.reg_type, base.size].add(self.alloc[base])
+        free[reg.reg_type, base.size].append(self.alloc[base])
         if inst.is_vec() and base.vector:
             self.defined[base] = inst
             for i in base.vector:
@@ -167,8 +167,9 @@ class StraightlineAllocator:
 
     def finalize(self, options):
         for reg in self.alloc:
-            for x in reg.vector:
-                if x not in self.dealloc and reg not in self.dealloc:
+            for x in reg.get_all():
+                if x not in self.dealloc and reg not in self.dealloc \
+                   and len(x.duplicates) == 1:
                     print('Warning: read before write at register', x)
                     print('\tregister trace: %s' % format_trace(x.caller,
                                                                 '\t\t'))
@@ -180,9 +181,10 @@ def determine_scope(block, options):
     used_from_scope = set_by_id()
 
     def read(reg, n):
-        if last_def[reg] == -1:
-            reg.can_eliminate = False
-            used_from_scope.add(reg)
+        for dup in reg.duplicates:
+            if last_def[dup] == -1:
+                dup.can_eliminate = False
+                used_from_scope.add(dup)
 
     def write(reg, n):
         if last_def[reg] != -1:
@@ -280,11 +282,11 @@ class Merger:
 
         preorder = None
 
-        if len(instructions) > 100000:
+        if len(instructions) > 1000000:
             print("Topological sort ...")
         order = Compiler.graph.topological_sort(G, preorder)
         instructions[:] = [instructions[i] for i in order if instructions[i] is not None]
-        if len(instructions) > 100000:
+        if len(instructions) > 1000000:
             print("Done at", time.asctime())
 
         return len(merges)
@@ -331,8 +333,9 @@ class Merger:
                     d[j] = d[i]
 
         def read(reg, n):
-            if last_def[reg] != -1:
-                add_edge(last_def[reg], n)
+            for dup in reg.duplicates:
+                if last_def[dup] != -1:
+                    add_edge(last_def[dup], n)
 
         def write(reg, n):
             last_def[reg] = n
@@ -356,18 +359,28 @@ class Merger:
                     addr_i = addr + i
                     handle_mem_access(addr_i, reg_type, last_access_this_kind,
                                       last_access_other_kind)
-                if not warned_about_mem and (instr.get_size() > 100):
+                if block.warn_about_mem and not warned_about_mem and \
+                   (instr.get_size() > 100):
                     print('WARNING: Order of memory instructions ' \
                         'not preserved due to long vector, errors possible')
                     warned_about_mem.append(True)
             else:
                 handle_mem_access(addr, reg_type, last_access_this_kind,
                                   last_access_other_kind)
-            if not warned_about_mem and not isinstance(instr, DirectMemoryInstruction):
+            if block.warn_about_mem and not warned_about_mem and \
+               not isinstance(instr, DirectMemoryInstruction):
                 print('WARNING: Order of memory instructions ' \
                     'not preserved, errors possible')
                 # hack
                 warned_about_mem.append(True)
+
+        def strict_mem_access(n, last_this_kind, last_other_kind):
+            if last_other_kind and last_this_kind and \
+               last_other_kind[-1] > last_this_kind[-1]:
+                last_this_kind[:] = []
+            last_this_kind.append(n)
+            for i in last_other_kind:
+                add_edge(i, n)
 
         def keep_order(instr, n, t, arg_index=None):
             if arg_index is None:
@@ -442,22 +455,21 @@ class Merger:
 
             if isinstance(instr, ReadMemoryInstruction):
                 if options.preserve_mem_order:
-                    if last_mem_write and last_mem_read and last_mem_write[-1] > last_mem_read[-1]:
-                        last_mem_read[:] = []
-                    last_mem_read.append(n)
-                    for i in last_mem_write:
-                        add_edge(i, n)
+                    strict_mem_access(n, last_mem_read, last_mem_write)
                 else:
                     mem_access(n, instr, last_mem_read_of, last_mem_write_of)
             elif isinstance(instr, WriteMemoryInstruction):
                 if options.preserve_mem_order:
-                    if last_mem_write and last_mem_read and last_mem_write[-1] < last_mem_read[-1]:
-                        last_mem_write[:] = []
-                    last_mem_write.append(n)
-                    for i in last_mem_read:
-                        add_edge(i, n)
+                    strict_mem_access(n, last_mem_write, last_mem_read)
                 else:
                     mem_access(n, instr, last_mem_write_of, last_mem_read_of)
+            elif isinstance(instr, matmulsm):
+                if options.preserve_mem_order:
+                    strict_mem_access(n, last_mem_read, last_mem_write)
+                else:
+                    for i in last_mem_write_of.values():
+                        for j in i:
+                            add_edge(j, n)
             # keep I/O instructions in order
             elif isinstance(instr, IOInstruction):
                 if last_print_str is not None:
@@ -477,13 +489,9 @@ class Merger:
             if not G.pred[n]:
                 self.sources.append(n)
 
-            if n % 100000 == 0 and n > 0:
+            if n % 1000000 == 0 and n > 0:
                 print("Processed dependency of %d/%d instructions at" % \
                     (n, len(block.instructions)), time.asctime())
-
-        if len(open_nodes) > 1000 and self.block.parent.program.verbose:
-            print("Basic block has %d %s instructions" %
-                  (len(open_nodes), merge_classes))
 
     def merge_nodes(self, i, j):
         """ Merge node j into i, removing node j """
@@ -599,4 +607,4 @@ class RegintOptimizer:
                     elif op == 1:
                         instructions[i] = None
                         inst.args[0].link(inst.args[1])
-        instructions[:] = filter(lambda x: x is not None, instructions)
+        instructions[:] = list(filter(lambda x: x is not None, instructions))

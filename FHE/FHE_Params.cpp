@@ -1,20 +1,16 @@
 
 #include "FHE_Params.h"
 #include "FHE/Ring_Element.h"
-#include "Math/gfp.h"
-#include "Exceptions/Exceptions.h"
-
+#include "Tools/Exceptions.h"
 
 void FHE_Params::set(const Ring& R,
-                     const vector<bigint>& primes,double r,int hwt)
+                     const vector<bigint>& primes)
 {
   if (primes.size() != FFTData.size())
     throw runtime_error("wrong number of primes");
 
   for (size_t i = 0; i < FFTData.size(); i++)
     FFTData[i].init(R,primes[i]);
-
-  Chi.set(R.phi_m(),hwt,r);
 
   set_sec(40);
 }

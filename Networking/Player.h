@@ -69,7 +69,7 @@ class Names
   Names(ez::ezOptionParser& opt, int argc, const char** argv,
       int default_nplayers = 2);
 
-  Names() : nplayers(-1), portnum_base(-1), player_no(-1), global_server(0), server(0) { ; }
+  Names() : nplayers(1), portnum_base(-1), player_no(0), global_server(0), server(0) { ; }
   Names(const Names& other);
   ~Names();
 
@@ -90,15 +90,16 @@ struct CommStats
   size_t data, rounds;
   Timer timer;
   CommStats() : data(0), rounds(0) {}
-  Timer& add(const octetStream& os)
+  Timer& add(size_t length)
     {
 #ifdef VERBOSE_COMM
-      cout << "add " << os.get_length() << endl;
+      cout << "add " << length << endl;
 #endif
-      data += os.get_length();
+      data += length;
       rounds++;
       return timer;
     }
+  Timer& add(const octetStream& os) { return add(os.get_length()); }
   void add(const octetStream& os, const TimeScope& scope) { add(os) += scope; }
   CommStats& operator+=(const CommStats& other);
   CommStats& operator-=(const CommStats& other);
@@ -140,7 +141,9 @@ public:
   virtual int num_players() const = 0;
 
   virtual void pass_around(octetStream& o, int offset = 1) const = 0;
-  virtual void Broadcast_Receive(vector<octetStream>& o,bool donthash=false) const = 0;
+  virtual void Broadcast_Receive(vector<octetStream>& o) const = 0;
+  virtual void unchecked_broadcast(vector<octetStream>& o) const
+  { Broadcast_Receive(o); }
 };
 
 class Player : public PlayerBase
@@ -167,42 +170,81 @@ public:
   virtual void send_long(int i, long a) const = 0;
   virtual long receive_long(int i) const = 0;
 
-  virtual void send_all(const octetStream& o,bool donthash=false) const = 0;
-  void send_to(int player,const octetStream& o,bool donthash=false) const;
+  // The following functions generally update the statistics
+  // and then call the *_no_stats equivalent specified by a subclass.
+
+  // send the same to all other players
+  virtual void send_all(const octetStream& o) const;
+  // send to a specific player
+  void send_to(int player,const octetStream& o) const;
   virtual void send_to_no_stats(int player,const octetStream& o) const = 0;
+  // receive from all other players
   void receive_all(vector<octetStream>& os) const;
-  void receive_player(int i,octetStream& o,bool donthash=false) const;
+  // receive from a specific player
+  void receive_player(int i,octetStream& o) const;
   virtual void receive_player_no_stats(int i,octetStream& o) const = 0;
   virtual void receive_player(int i,FlexBuffer& buffer) const;
 
   // Communication relative to my number
+  // send to all other players by offset
   void send_relative(const vector<octetStream>& o) const;
+  // send to other player specified by offset
   void send_relative(int offset, const octetStream& o) const;
+  // receive from all other players by offset
   void receive_relative(vector<octetStream>& o) const;
+  // receive from other palyer specified by offset
   void receive_relative(int offset, octetStream& o) const;
 
   // exchange data with minimal memory usage
+  // exchange information with one other party
   void exchange(int other, const octetStream& to_send, octetStream& ot_receive) const;
   virtual void exchange_no_stats(int other, const octetStream& to_send, octetStream& ot_receive) const = 0;
   void exchange(int other, octetStream& o) const;
+  // exchange with one other partiy specified by offset
   void exchange_relative(int offset, octetStream& o) const;
+  // send information to party while receiving from another by offset
   void pass_around(octetStream& o, int offset = 1) const { pass_around(o, o, offset); }
   void pass_around(octetStream& to_send, octetStream& to_receive, int offset) const;
-  virtual void pass_around_no_stats(octetStream& to_send, octetStream& to_receive, int offset) const = 0;
+  virtual void pass_around_no_stats(const octetStream& to_send,
+      octetStream& to_receive, int offset) const = 0;
 
   /* Broadcast and Receive data to/from all players
    *  - Assumes o[player_no] contains the thing broadcast by me
    */
-  virtual void Broadcast_Receive(vector<octetStream>& o,bool donthash=false) const = 0;
+  virtual void unchecked_broadcast(vector<octetStream>& o) const;
+  // broadcast with eventual verification
+  virtual void Broadcast_Receive(vector<octetStream>& o) const;
+  virtual void Broadcast_Receive_no_stats(vector<octetStream>& o) const = 0;
 
   /* Run Protocol To Verify Broadcast Is Correct
    *     - Resets the blk_SHA_CTX at the same time
    */
   virtual void Check_Broadcast() const;
 
+  // send something different to all
+  void send_receive_all(const vector<octetStream>& to_send,
+      vector<octetStream>& to_receive) const;
+  // specified senders only send something different to all
+  void send_receive_all(const vector<bool>& senders,
+      const vector<octetStream>& to_send, vector<octetStream>& to_receive) const;
+  // send something different only one specified channels
+  void send_receive_all(const vector<vector<bool>>& channels,
+      const vector<octetStream>& to_send,
+      vector<octetStream>& to_receive) const;
+  virtual void send_receive_all_no_stats(const vector<vector<bool>>& channels,
+      const vector<octetStream>& to_send,
+      vector<octetStream>& to_receive) const = 0;
+
+  // specified senders broadcast information
+  virtual void partial_broadcast(const vector<bool>& senders,
+      vector<octetStream>& os) const;
+  virtual void partial_broadcast(const vector<bool>&, const vector<bool>&,
+      vector<octetStream>& os) const { unchecked_broadcast(os); }
+
   // dummy functions for compatibility
   virtual void request_receive(int i, octetStream& o) const { (void)i; (void)o; }
-  virtual void wait_receive(int i, octetStream& o, bool donthash=false) const { receive_player(i, o, donthash); }
+  virtual void wait_receive(int i, octetStream& o) const
+  { receive_player(i, o); }
 };
 
 template<class T>
@@ -213,8 +255,6 @@ protected:
   T send_to_self_socket;
 
   void setup_sockets(const vector<string>& names,const vector<int>& ports,int id_base,ServerSocket& server);
-
-  map<T,int> socket_players;
 
   T socket_to_send(int player) const { return player == player_no ? send_to_self_socket : sockets[player]; }
 
@@ -230,35 +270,30 @@ public:
   T socket(int i) const { return sockets[i]; }
 
   // Send/Receive data to/from player i 
-  // 8-bit ints only (mainly for testing)
-  void send_int(int i,int a)  const    { send(sockets[i],a);    }
-  void receive_int(int i,int& a) const { receive(sockets[i],a); }
-
   void send_long(int i, long a) const;
   long receive_long(int i) const;
 
   // Send an octetStream to all other players 
   //   -- And corresponding receive
-  virtual void send_all(const octetStream& o,bool donthash=false) const;
-  void send_to_no_stats(int player,const octetStream& o) const;
+  virtual void send_to_no_stats(int player,const octetStream& o) const;
   virtual void receive_player_no_stats(int i,octetStream& o) const;
 
   // exchange data with minimal memory usage
-  void exchange_no_stats(int other, const octetStream& to_send, octetStream& ot_receive) const;
+  virtual void exchange_no_stats(int other, const octetStream& to_send,
+      octetStream& to_receive) const;
 
   // send to next and receive from previous player
-  virtual void pass_around_no_stats(octetStream& to_send, octetStream& to_receive, int offset) const;
-
-  // Receive one from player i
+  virtual void pass_around_no_stats(const octetStream& to_send,
+      octetStream& to_receive, int offset) const;
 
   /* Broadcast and Receive data to/from all players 
    *  - Assumes o[player_no] contains the thing broadcast by me
    */
-  void Broadcast_Receive(vector<octetStream>& o,bool donthash=false) const;
-  void Broadcast_Receive_no_stats(vector<octetStream>& o) const;
+  virtual void Broadcast_Receive_no_stats(vector<octetStream>& o) const;
 
-  // wait for available inputs
-  void wait_for_available(vector<int>& players, vector<int>& result) const;
+  virtual void send_receive_all_no_stats(const vector<vector<bool>>& channels,
+      const vector<octetStream>& to_send,
+      vector<octetStream>& to_receive) const;
 };
 
 typedef MultiPlayer<int> PlainPlayer;
@@ -267,17 +302,17 @@ typedef MultiPlayer<int> PlainPlayer;
 class ThreadPlayer : public MultiPlayer<int>
 {
 public:
-  mutable vector<Receiver*> receivers;
+  mutable vector<Receiver<int>*> receivers;
   mutable vector<Sender<int>*>   senders;
 
   ThreadPlayer(const Names& Nms,int id_base=0);
   virtual ~ThreadPlayer();
 
   void request_receive(int i, octetStream& o) const;
-  void wait_receive(int i, octetStream& o, bool donthash=false) const;
+  void wait_receive(int i, octetStream& o) const;
   void receive_player_no_stats(int i,octetStream& o) const;
 
-  void send_all(const octetStream& o,bool donthash=false) const;
+  void send_all(const octetStream& o) const;
 };
 
 
@@ -293,7 +328,7 @@ public:
   virtual void send(octetStream& o) const = 0;
   virtual void receive(octetStream& o) const = 0;
   virtual void send_receive_player(vector<octetStream>& o) const = 0;
-  void Broadcast_Receive(vector<octetStream>& o, bool donthash=false) const;
+  void Broadcast_Receive(vector<octetStream>& o) const;
 };
 
 class RealTwoPartyPlayer : public TwoPartyPlayer
@@ -364,10 +399,10 @@ public:
   int num_players() const { return 2; }
   int get_offset() const { return offset; }
 
-  void send(octetStream& o) const { P.send_to(P.get_player(offset), o, true); }
-  void reverse_send(octetStream& o) const { P.send_to(P.get_player(-offset), o, true); }
-  void receive(octetStream& o) const { P.receive_player(P.get_player(offset), o, true); }
-  void reverse_receive(octetStream& o) { P.receive_player(P.get_player(-offset), o, true); }
+  void send(octetStream& o) const { P.send_to(P.get_player(offset), o); }
+  void reverse_send(octetStream& o) const { P.send_to(P.get_player(-offset), o); }
+  void receive(octetStream& o) const { P.receive_player(P.get_player(offset), o); }
+  void reverse_receive(octetStream& o) { P.receive_player(P.get_player(-offset), o); }
   void send_receive_player(vector<octetStream>& o) const;
 
   void reverse_exchange(octetStream& o) const { P.pass_around(o, P.num_players() - offset); }

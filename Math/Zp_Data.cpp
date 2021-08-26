@@ -60,23 +60,13 @@ void Zp_Data::init(const bigint& p,bool mont)
 }
 
 
-__m128i Zp_Data::get_random128(PRNG& G)
-{
-  assert(t == 2);
-  while (true)
-    {
-      __m128i res = G.get_doubleword();
-      if (__uint128_t(res) < __uint128_t(int128(prA[1], prA[0]).a))
-        return res;
-    }
-}
-
-
 #include <stdlib.h>
 
 void Zp_Data::Mont_Mult(mp_limb_t* z,const mp_limb_t* x,const mp_limb_t* y,int t) const
 {
-  mp_limb_t ans[2*MAX_MOD_SZ+1],u;
+  mp_limb_t ans[2 * MAX_MOD_SZ + 1], u, yy[t + 1];
+  inline_mpn_copyi(yy, y, t);
+  yy[t] = 0;
   // First loop
   u=x[0]*y[0]*pi;
   ans[t]  = mpn_mul_1(ans,y,t,x[0]);
@@ -85,8 +75,8 @@ void Zp_Data::Mont_Mult(mp_limb_t* z,const mp_limb_t* x,const mp_limb_t* y,int t
     { // u=(ans0+xi*y0)*pd
       u=(ans[i]+x[i]*y[0])*pi;
       // ans=ans+xi*y+u*pr
-      ans[t+i]+=mpn_addmul_1(ans+i,y,t,x[i]);
-      ans[t+i+1]=mpn_addmul_1(ans+i,prA,t+1,u);
+      ans[t+i+1]=mpn_addmul_1(ans+i,yy,t+1,x[i]);
+      ans[t+i+1]+=mpn_addmul_1(ans+i,prA,t+1,u);
     }
   // if (ans>=pr) { ans=z-pr; }
   // else         { z=ans;    }
@@ -157,4 +147,9 @@ bool Zp_Data::operator!=(const Zp_Data& other) const
     return true;
   else
     return false;
+}
+
+bool Zp_Data::operator==(const Zp_Data& other) const
+{
+  return not (*this != other);
 }

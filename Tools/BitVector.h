@@ -7,14 +7,14 @@
 #include <vector>
 using namespace std;
 #include <stdlib.h>
-#include <pmmintrin.h>
 #include <assert.h>
 
-#include "Exceptions/Exceptions.h"
+#include "Tools/Exceptions.h"
 #include "Networking/data.h"
 // just for util functions
 #include "Math/gf2nlong.h"
 #include "Math/FixedVec.h"
+#include "Tools/intrinsics.h"
 
 class PRNG;
 class octetStream;
@@ -137,6 +137,8 @@ class BitVector
         return *this;
     }
 
+    BitVector& operator=(const octetStream other);
+
     void swap(BitVector& other)
     {
         std::swap(nbits, other.nbits);
@@ -156,7 +158,7 @@ class BitVector
         void operator=(const Access& other) { *this = other.get(); }
         void operator^=(const Access& other) { *this = get() ^ other.get(); }
         bool operator==(const Access& other) const { return get() == other.get(); }
-        bool operator==(bool b) const { return get() == b; }
+        operator bool() const { return get(); }
     };
 
     bool operator[](int i) const { return get_bit(i); }
@@ -198,7 +200,7 @@ class BitVector
     void set_bit(int i,unsigned int a)
     {
         if ((size_t)i >= nbits)
-            throw overflow_error("BitVector " + to_string(i) + "/" + to_string(nbits));
+            throw overflow("BitVector", i, nbits);
         int j = i/8, k = i&7;
         if (a==1)
           { bytes[j] |= (octet)(1UL<<k); }
@@ -242,6 +244,11 @@ class BitVector
         return true;
     }
 
+    bool operator==(const BitVector& other)
+    {
+        return equals(other);
+    }
+
     void append(const BitVector& other, size_t length);
 
     void randomize(PRNG& G);
@@ -274,7 +281,11 @@ T inline BitVector::get_portion(int i) const
     if (T::size_in_bits() == 1)
         return get_bit(i);
     else
-        return (char*)&bytes[T::size() * i];
+    {
+        T res;
+        res.assign(&bytes[T::size() * i]);
+        return res;
+    }
 }
 
 template <class T>

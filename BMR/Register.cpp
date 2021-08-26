@@ -574,11 +574,11 @@ void EvalRegister::inputb(GC::Processor<GC::Secret<EvalRegister> >& processor,
 	}
 	for (auto& access : accesses)
 		access.prepare_masks(my_os);
-	party.P->Broadcast_Receive(oss, true);
+	party.P->unchecked_broadcast(oss);
 	my_os.reset_write_head();
 	for (auto& access : accesses)
 		access.received_masks(oss);
-	party.P->Broadcast_Receive(oss, true);
+	party.P->unchecked_broadcast(oss);
 	for (auto& access : accesses)
 		access.received_labels(oss);
 }
@@ -622,7 +622,7 @@ void EvalRegister::other_input(EvalInputter& inputter, int from)
 
 void EvalInputter::exchange()
 {
-	party.P->Broadcast_Receive(oss, true);
+	party.P->unchecked_broadcast(oss);
 	for (auto& tuple : tuples)
 	{
 		if (tuple.from != party.P->my_num())
@@ -646,11 +646,12 @@ void EvalInputter::exchange()
 #endif
 	}
 
-	party.P->Broadcast_Receive(oss, true);
+	party.P->unchecked_broadcast(oss);
 }
 
-void EvalRegister::finalize_input(EvalInputter& inputter, int, int)
+void EvalRegister::finalize_input(EvalInputter& inputter, int from, int)
 {
+	(void) from;
 	auto& party = inputter.party;
 	size_t id = party.get_id() - 1;
 	for (size_t i = 0; i < (size_t)party.get_n_parties(); i++)

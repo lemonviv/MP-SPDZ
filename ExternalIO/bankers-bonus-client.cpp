@@ -38,6 +38,8 @@
 #include "Math/Setup.h"
 #include "Protocols/fake-stuff.h"
 
+#include "Math/gfp.hpp"
+
 #include <sodium.h>
 #include <iostream>
 #include <sstream>
@@ -123,7 +125,7 @@ T receive_result(vector<ssl_socket*>& sockets, int nparties)
 }
 
 template<class T>
-void run(int salary_value, vector<ssl_socket*>& sockets, int nparties)
+void one_run(T salary_value, vector<ssl_socket*>& sockets, int nparties)
 {
     // Run the computation
     send_private_inputs<T>({salary_value}, sockets, nparties);
@@ -135,30 +137,50 @@ void run(int salary_value, vector<ssl_socket*>& sockets, int nparties)
     cout << "Winning client id is : " << result << endl;
 }
 
+template<class T>
+void run(double salary_value, vector<ssl_socket*>& sockets, int nparties)
+{
+    // sint
+    one_run<T>(long(round(salary_value)), sockets, nparties);
+    // sfix with f = 16
+    one_run<T>(long(round(salary_value * exp2(16))), sockets, nparties);
+}
+
 int main(int argc, char** argv)
 {
     int my_client_id;
     int nparties;
-    int salary_value;
+    double salary_value;
     int finish;
     int port_base = 14000;
-    string host_name = "localhost";
 
     if (argc < 5) {
         cout << "Usage is bankers-bonus-client <client identifier> <number of spdz parties> "
-           << "<salary to compare> <finish (0 false, 1 true)> <optional host name, default localhost> "
+           << "<salary to compare> <finish (0 false, 1 true)> <optional host names..., default localhost> "
            << "<optional spdz party port base number, default 14000>" << endl;
         exit(0);
     }
 
     my_client_id = atoi(argv[1]);
     nparties = atoi(argv[2]);
-    salary_value = atoi(argv[3]);
+    salary_value = atof(argv[3]);
     finish = atoi(argv[4]);
+    vector<const char*> hostnames(nparties, "localhost");
+
     if (argc > 5)
-        host_name = argv[5];
-    if (argc > 6)
-        port_base = atoi(argv[6]);
+    {
+        if (argc < 5 + nparties)
+        {
+            cerr << "Not enough hostnames specified";
+            exit(1);
+        }
+
+        for (int i = 0; i < nparties; i++)
+            hostnames[i] = argv[5 + i];
+    }
+
+    if (argc > 5 + nparties)
+        port_base = atoi(argv[5 + nparties]);
 
     bigint::init_thread();
 
@@ -170,7 +192,7 @@ int main(int argc, char** argv)
     octetStream specification;
     for (int i = 0; i < nparties; i++)
     {
-        set_up_client_socket(plain_sockets[i], host_name.c_str(), port_base + i);
+        set_up_client_socket(plain_sockets[i], hostnames[i], port_base + i);
         send(plain_sockets[i], (octet*) &my_client_id, sizeof(int));
         sockets[i] = new ssl_socket(io_service, ctx, plain_sockets[i],
                 "P" + to_string(i), "C" + to_string(my_client_id), true);

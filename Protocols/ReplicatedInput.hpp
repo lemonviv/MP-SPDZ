@@ -40,7 +40,7 @@ inline void ReplicatedInput<T>::add_mine(const typename T::open_type& input, int
 }
 
 template<class T>
-void ReplicatedInput<T>::add_other(int player)
+void ReplicatedInput<T>::add_other(int player, int)
 {
     expect[player] = true;
 }
@@ -61,10 +61,10 @@ void ReplicatedInput<T>::exchange()
         if (receive)
             P.pass_around(os[1], dest, -1);
         else
-            P.send_to(P.get_player(-1), os[1], true);
+            P.send_to(P.get_player(-1), os[1]);
     else
         if (receive)
-            P.receive_player(P.get_player(1), dest, true);
+            P.receive_player(P.get_player(1), dest);
 }
 
 template<class T>

@@ -10,6 +10,8 @@
 #include "FHEOffline/SimpleMachine.h"
 #include "FHEOffline/Producer.h"
 
+#include "FHEOffline/DataSetup.hpp"
+
 template<class T>
 MultiplicativeMachine* ChaiGearPrep<T>::machine = 0;
 template<class T>
@@ -50,6 +52,7 @@ void ChaiGearPrep<T>::basic_setup(Player& P)
 #endif
     machine->sec = options.lowgear_security;
     setup.secure_init(P, *machine, T::clear::length(), options.lowgear_security);
+    T::clear::template init<typename FD::T>();
 #ifdef VERBOSE
     cerr << T::type_string() << " parameter setup took " << timer.elapsed()
             << " seconds" << endl;
@@ -64,14 +67,15 @@ void ChaiGearPrep<T>::key_setup(Player& P, mac_key_type alphai)
     assert(machine);
     auto& setup = machine->setup.part<FD>();
     auto& options = CowGearOptions::singleton;
-    setup.covert_secrets_generation(P, *machine, options.covert_security);
+    read_or_generate_secrets(setup, P, *machine, options.covert_security,
+            T::covert);
 
     // adjust mac key
     mac_key_type diff = alphai - setup.alphai;
     setup.alphai = alphai;
     Bundle<octetStream> bundle(P);
     diff.pack(bundle.mine);
-    P.Broadcast_Receive(bundle, true);
+    P.unchecked_broadcast(bundle);
     for (int i = 0; i < P.num_players(); i++)
     {
         Plaintext_<FD> mess(setup.FieldD);
@@ -135,20 +139,13 @@ void ChaiGearPrep<T>::buffer_squares()
     assert(machine);
     square_producer->run(this->proc->P, setup.pk, setup.calpha, generator.EC,
             generator.dd, {});
-    MAC_Check<typename T::clear> MC(this->proc->MC.get_alphai());
+    MAC_Check<typename FD::T> MC(this->proc->MC.get_alphai());
     square_producer->sacrifice(this->proc->P, MC);
     MC.Check(this->proc->P);
     auto& squares = square_producer->tuples;
     assert(not squares.empty());
     for (auto& square : squares)
         this->squares.push_back({{square[0], square[1]}});
-}
-
-template<class T>
-void ChaiGearPrep<T>::buffer_inverses()
-{
-    assert(this->proc != 0);
-    ::buffer_inverses(this->inverses, *this, this->proc->MC, this->proc->P);
 }
 
 template<class T>
@@ -173,16 +170,24 @@ void ChaiGearPrep<T>::buffer_inputs(int player)
 #endif
 }
 
-template<>
-inline void ChaiGearPrep<ChaiGearShare<gfp>>::buffer_bits()
+template<class T>
+inline void ChaiGearPrep<T>::buffer_bits()
+{
+    buffer_bits<0>(T::clear::characteristic_two);
+}
+
+template<class T>
+template<int>
+void ChaiGearPrep<T>::buffer_bits(false_type)
 {
     buffer_bits_from_squares(*this);
 }
 
-template<>
-inline void ChaiGearPrep<ChaiGearShare<gf2n_short>>::buffer_bits()
+template<class T>
+template<int>
+void ChaiGearPrep<T>::buffer_bits(true_type)
 {
-    buffer_bits_without_check();
+    this->buffer_bits_without_check();
     assert(not this->bits.empty());
     for (auto& bit : this->bits)
         bit.force_to_bit();

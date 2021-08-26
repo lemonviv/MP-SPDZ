@@ -10,15 +10,25 @@ sharing (with an honest majority).
 
 [Filing an issue on GitHub](../../issues) is the preferred way of contacting
 us, but you can also write an email to mp-spdz@googlegroups.com
-([archive](https://groups.google.com/forum/#!forum/mp-spdz)).
+([archive](https://groups.google.com/forum/#!forum/mp-spdz)). Before
+reporting a problem, please check against the list of [known
+issues and possible
+solutions](https://mp-spdz.readthedocs.io/en/latest/troubleshooting.html).
+
+#### Frequently Asked Questions
+
+[The documentation](https://mp-spdz.readthedocs.io/en/latest) contains
+sections on a number of frequently asked topics as well as information
+on how to solve common issues.
 
 #### TL;DR (Binary Distribution on Linux or Source Distribution on macOS)
 
-This requires either a Linux distribution originally released 2011 or
-later (glibc 2.12) or macOS High Sierra or later as well as Python 3
+This requires either a Linux distribution originally released 2014 or
+later (glibc 2.17) or macOS High Sierra or later as well as Python 3
 and basic command-line utilities.
 
-Download and unpack the [distribution](https://github.com/n1analytics/MP-SPDZ/releases),
+Download and unpack the
+[distribution](https://github.com/data61/MP-SPDZ/releases),
 then execute the following from
 the top folder:
 
@@ -38,13 +48,16 @@ parties and malicious security.
 On Linux, this requires a working toolchain and [all
 requirements](#requirements). On Ubuntu, the following might suffice:
 ```
-apt-get install automake build-essential git libboost-dev libboost-thread-dev libsodium-dev libssl-dev libtool m4 python texinfo yasm
+apt-get install automake build-essential git libboost-dev libboost-thread-dev libntl-dev libsodium-dev libssl-dev libtool m4 python3 texinfo yasm
 ```
 On MacOS, this requires [brew](https://brew.sh) to be installed,
 which will be used for all dependencies.
 It will execute [the
 tutorial](Programs/Source/tutorial.mpc) with two parties and malicious
 security.
+
+Note that this only works with a git clone but not with a binary
+release.
 
 ```
 make -j 8 tldr
@@ -70,11 +83,84 @@ The following table lists all protocols that are fully supported.
 
 | Security model | Mod prime / GF(2^n) | Mod 2^k | Bin. SS | Garbling |
 | --- | --- | --- | --- | --- |
-| Malicious, dishonest majority | [MASCOT](#secret-sharing) | [SPDZ2k](#secret-sharing) | [Tiny / Tinier](#secret-sharing) | [BMR](#bmr) |
+| Malicious, dishonest majority | [MASCOT / LowGear / HighGear](#secret-sharing) | [SPDZ2k](#secret-sharing) | [Tiny / Tinier](#secret-sharing) | [BMR](#bmr) |
 | Covert, dishonest majority | [CowGear / ChaiGear](#secret-sharing) | N/A | N/A | N/A |
 | Semi-honest, dishonest majority | [Semi / Hemi / Soho](#secret-sharing) | [Semi2k](#secret-sharing) | [SemiBin](#secret-sharing) | [Yao's GC](#yaos-garbled-circuits) / [BMR](#bmr) |
-| Malicious, honest majority | [Shamir / Rep3 / PS / SY](#honest-majority) | [Brain / Rep[34] / PS / SY](#honest-majority) | [Rep3 / CCD](#honest-majority) | [BMR](#bmr) |
-| Semi-honest, honest majority | [Shamir / Rep3](#honest-majority) | [Rep3](#honest-majority) | [Rep3 / CCD](#honest-majority) | [BMR](#bmr) |
+| Malicious, honest majority | [Shamir / Rep3 / PS / SY](#honest-majority) | [Brain / Rep[34] / PS / SY](#honest-majority) | [Rep3 / CCD / PS](#honest-majority) | [BMR](#bmr) |
+| Semi-honest, honest majority | [Shamir / ATLAS / Rep3](#honest-majority) | [Rep3](#honest-majority) | [Rep3 / CCD](#honest-majority) | [BMR](#bmr) |
+
+See [this paper](https://eprint.iacr.org/2020/300) for an explanation
+of the various security models and high-level introduction to
+multi-party computation.
+
+##### Finding the most efficient protocol
+
+Lower security requirements generally allow for more efficient
+protocols. Within the same security model (line in the table above),
+there are a few things to consider:
+
+- Computation domain: Arithmetic protocols (modulo prime or power of
+  two) are preferable for many applications because they offer integer
+  addition and multiplication at low cost. However, binary circuits
+  might a better option if there is very little integer
+  computation. [See below](#finding-the-most-efficient-variant) to
+  find the most efficient mixed-circuit variant.  Furthermore, local
+  computation modulo a power of two is cheaper, but MP-SPDZ does not
+  offer this domain with homomorphic encryption.
+
+- Secret sharing vs garbled circuits: Computation using secret sharing
+  requires a number of communication rounds that grows depending on
+  the computation, which is not the case for garbled
+  circuits. However, the cost of integer computation as a binary
+  circuit often offset this. MP-SPDZ only offers garbled circuit
+  with binary computation.
+
+- Underlying technology for dishonest majority: While secret sharing
+  alone suffice honest-majority computation, dishonest majority
+  requires either homomorphic encryption (HE) or oblivious transfer
+  (OT). The two options offer a computation-communication trade-off:
+  While OT is easier to compute, HE requires less
+  communication. Furthermore, the latter requires a certain of
+  batching to be efficient, which makes OT preferable for smaller
+  tasks.
+
+- Malicious, honest-majority three-party computation: A number of
+  protocols are available for this setting, but SY/SPDZ-wise is the
+  most efficient one for a number of reasons: It requires the lowest
+  communication, and it is the only one offering constant-communication
+  dot products.
+
+- Fixed-point multiplication: Three- and four-party replicated secret
+  sharing modulo a power of two allow a special probabilistic
+  truncation protocol (see [Dalskov et
+  al.](https://eprint.iacr.org/2019/131) and [Dalskov et
+  al.](https://eprint.iacr.org/2020/1330)). You can activate it by
+  adding `program.use_trunc_pr = True` at the beginning of your
+  high-level program.
+
+- Minor variants: Some command-line options change aspects of the
+  protocols such as:
+
+  - `--bucket-size`: In some malicious binary computation and
+    malicious edaBit generation, a smaller bucket size allows
+    preprocessing in smaller batches at a higher asymptotic cost.
+
+  - `--batch-size`: Preprocessing in smaller batches avoids generating
+    too much but larger batches save communication rounds.
+
+  - `--direct`: In dishonest-majority protocols, direct communication
+    instead of star-shaped saves communication rounds at the expense
+    of a quadratic amount. This might be beneficial with a small
+    number of parties.
+
+  - `--bits-from-squares`: In some protocols computing modulo a prime
+    (Shamir, Rep3, SPDZ-wise), this switches from generating random
+    bits via XOR of parties' inputs to generation using the root of a
+    random square.
+
+  - `--top-gear`: In protocols with malicious security using
+    homomorphic encryption, this reduces the memory usage and batch
+    size for preprocessing.
 
 #### Paper and Citation
 
@@ -82,12 +168,14 @@ The design of MP-SPDZ is described in [this
 paper](https://eprint.iacr.org/2020/521). If you use it for an
 academic project, please cite:
 ```
-@misc{mp-spdz,
+@inproceedings{mp-spdz,
     author = {Marcel Keller},
     title = {{MP-SPDZ}: A Versatile Framework for Multi-Party Computation},
-    howpublished = {Cryptology ePrint Archive, Report 2020/521},
+    booktitle = {Proceedings of the 2020 ACM SIGSAC Conference on
+    Computer and Communications Security},
     year = {2020},
-    note = {\url{https://eprint.iacr.org/2020/521}},
+    doi = {10.1145/3372297.3417872},
+    url = {https://doi.org/10.1145/3372297.3417872},
 }
 ```
 
@@ -143,13 +231,16 @@ phase outputs the amount of offline material required, which allows to
 compute the preprocessing time for a particular computation.
 
 #### Requirements
- - GCC 5 or later (tested with up to 9) or LLVM/clang 5 or later (tested with up to 9). We recommend clang because it performs better.
+
+ - GCC 5 or later (tested with up to 10) or LLVM/clang 5 or later
+   (only x86; tested with up to 11). For x86, we recommend clang
+   because it performs better.
  - MPIR library, compiled with C++ support (use flag `--enable-cxx` when running configure). You can use `make -j8 tldr` to install it locally.
  - libsodium library, tested against 1.0.16
- - OpenSSL, tested against and 1.0.2 and 1.1.0
+ - OpenSSL, tested against 1.1.1
  - Boost.Asio with SSL support (`libboost-dev` on Ubuntu), tested against 1.65
  - Boost.Thread for BMR (`libboost-thread-dev` on Ubuntu), tested against 1.65
- - 64-bit CPU
+ - x86 or ARM 64-bit CPU (the latter tested with AWS Gravitron)
  - Python 3.5 or later
  - NTL library for homomorphic encryption (optional; tested with NTL 10.5)
  - If using macOS, Sierra or later
@@ -158,15 +249,21 @@ compute the preprocessing time for a particular computation.
 
 1) Edit `CONFIG` or `CONFIG.mine` to your needs:
 
- - By default, a CPU supporting AES-NI, PCLMUL, AVX2, BMI2, ADX is
+ - By default, the binaries are optimized for the CPU you are
+   compiling on.
+   For all optimizations on x86, a CPU supporting AES-NI, PCLMUL, AVX2, BMI2, ADX is
    required. This includes mainstream processors released 2014 or later.
-   For older models you need to deactivate the respective
-   extensions in the `ARCH` variable.
+   If you intend to run on a different CPU than compiling, you might
+   need to change the `ARCH` variable in `CONFIG` or `CONFIG.mine` to
+   `-march=<cpu>`. See the [GCC
+   documentation](https://gcc.gnu.org/onlinedocs/gcc/x86-Options.html)
+   for the possible options. To run OT-based protocols on x86 without AVX,
+   add `AVX_OT = 0` in addition.
  - To benchmark online-only protocols or Overdrive offline phases, add the following line at the top: `MY_CFLAGS = -DINSECURE`
  - `PREP_DIR` should point to a local, unversioned directory to store preprocessing data (the default is `Player-Data` in the current directory).
- - For homomorphic encryption, set `USE_NTL = 1`.
+ - For homomorphic encryption with GF(2^40), set `USE_NTL = 1`.
 
-2) Run make to compile all the software (use the flag -j for faster
+2) Run `make` to compile all the software (use the flag `-j` for faster
 compilation using multiple threads). See below on how to compile specific
 parts only. Remember to run `make clean` first after changing `CONFIG`
 or `CONFIG.mine`.
@@ -187,31 +284,41 @@ to be compiled accordingly.
 
 #### Arithmetic modulo a prime
 
-```./compile.py [-F <integer bit length>] <program>```
+```./compile.py [-F <integer bit length>] [-P <prime>] <program>```
 
-The integer bit length defaults to 64.
+The integer bit length defaults to 64, and the prime defaults to none
+given. If a prime is given, it has to be at least two bits longer
+than the integer length.
 
 Note that in this context integers do not wrap around according to the
 bit integer bit length but the length is used for non-linear
 computations such as comparison.
-It is the responsibility of the user to make sure that they don't grow
-too large. If necessary `sint.Mod2m()` can be used to wrap around
-manually.
+Overflow in secret integers might have security implications if no
+concrete prime is given.
 
-The integer bit length together with the computation mandate a minimum
-for the size of the prime, which will be output by the compiler. It is
-also communicated to the virtual machine in the bytecode, which will
-fail if the minimum is not met.
+The parameters given together with the computation mandate some
+restriction on the prime modulus, either an exact value or a minimum
+length. The latter is roughly the integer length plus 40 (default
+security parameter). The restrictions are communicated to the virtual
+machines, which will use an appropriate prime if they have been
+compiled accordingly. By default, they are compiled for prime bit
+lengths up to 256. For larger primes, you will have to compile with
+`MOD = -DGFP_MOD_SZ=<number of limbs>` in `CONFIG.mine` where the
+number of limbs is the the prime length divided by 64 rounded up.
 
 The precision for fixed- and floating-point computation are not
 affected by the integer bit length but can be set in the code
-directly.
+directly. For fixed-point computation this is done via
+`sfix.set_precision()`.
 
 #### Arithmetic modulo 2^k
 
 ```./compile.py -R <integer bit length> <program>```
 
-Currently, most machines support bit lengths 64 and 72.
+The length is communicated to the virtual machines and automatically
+used if supported. By default, they support bit lengths 64, 72, and
+128. If another length is required, use `MOD = -DRING_SIZE=<bit
+length>` in `CONFIG.mine`.
 
 #### Binary circuits
 
@@ -265,14 +372,29 @@ when useful.
 
 This technique has been used by [Mohassel and
 Rindal](https://eprint.iacr.org/2018/403) as well as [Araki et
-al.](https://eprint.iacr.org/2018/762) It involves locally
+al.](https://eprint.iacr.org/2018/762) for three parties and [Demmler
+et al.](https://encrypto.de/papers/DSZ15.pdf) for two parties.
+It involves locally
 converting an arithmetic share to a set of binary shares, from which the
 binary equivalent to the arithmetic share is reconstructed using a
 binary adder. This requires additive secret sharing over a ring
 without any MACs. You can activate it by using `-Z <n>` with the
 compiler where `n` is the number of parties for the standard variant
-(3 or 4) and 2 for the special
+and 2 for the special
 variant by Mohassel and Rindal (available in Rep3 only).
+
+##### Finding the most efficient variant
+
+Where available, local share conversion is likely the most efficient
+variant. Otherwise, edaBits likely offer an asymptotic benefit. When
+using edaBits with malicious protocols, there is a trade-off between
+cost per item and batch size. The lowest cost per item requires large
+batches of edaBits (more than one million at once), which is only
+worthwhile for accordingly large computation. This setting can be
+selected by running the virtual machine with `-B 3`. For smaller
+computation, try `-B 4` or `-B 5`, which set the batch size to ~10,000
+and ~1,000, respectively, at a higher asymptotic cost. `-B 4` is the
+default.
 
 #### Bristol Fashion circuits
 
@@ -361,7 +483,8 @@ This runs the compiled bytecode in cleartext computation.
 
 Some full implementations require oblivious transfer, which is
 implemented as OT extension based on
-https://github.com/mkskeller/SimpleOT.
+https://github.com/mkskeller/SimpleOT or OpenSSL (activate the
+latter with `AVX_OT = 0` in `CONFIG` or `CONFIG.mine`).
 
 ### Secret sharing
 
@@ -374,6 +497,8 @@ The following table shows all programs for dishonest-majority computation using 
 | `spdz2k-party.x` | [SPDZ2k](https://eprint.iacr.org/2018/482) | Mod 2^k | Malicious | `spdz2k.sh` |
 | `semi-party.x` | OT-based | Mod prime | Semi-honest | `semi.sh` |
 | `semi2k-party.x` | OT-based | Mod 2^k | Semi-honest | `semi2k.sh` |
+| `lowgear-party.x` | [LowGear](https://eprint.iacr.org/2017/1230) | Mod prime | Malicious | `lowgear.sh` |
+| `highgear-party.x` | [HighGear](https://eprint.iacr.org/2017/1230) | Mod prime | Malicious | `highgear.sh` |
 | `cowgear-party.x` | Adapted [LowGear](https://eprint.iacr.org/2017/1230) | Mod prime | Covert | `cowgear.sh` |
 | `chaigear-party.x` | Adapted [HighGear](https://eprint.iacr.org/2017/1230) | Mod prime | Covert | `chaigear.sh` |
 | `hemi-party.x` | Semi-homomorphic encryption | Mod prime | Semi-honest | `hemi.sh` |
@@ -402,13 +527,13 @@ particular, the SPDZ2k sacrifice does not work for bits, so we replace
 it by cut-and-choose according to [Furukawa et
 al.](https://eprint.iacr.org/2016/944)
 
-CowGear denotes a covertly secure version of LowGear. The reason for
-this is the key generation that only achieves covert security. It is
-possible however to run full LowGear for the offline phase by using
-`-s` with the desired security parameter. The same holds for ChaiGear,
-an adapted version of HighGear. Option `-T` activates
-[TopGear](https://eprint.iacr.org/2019/035) zero-knowledge proofs in
-both.
+The virtual machines for LowGear and HighGear run a key generation
+similar to the one by [Rotaru et
+al.](https://eprint.iacr.org/2019/1300). The main difference is using
+daBits to generate maBits. CowGear and ChaiGear denote covertly
+secure versions of LowGear and HighGear. In all relevant programs,
+option `-T` activates [TopGear](https://eprint.iacr.org/2019/035)
+zero-knowledge proofs in both.
 
 Hemi and Soho denote the stripped version version of LowGear and
 HighGear, respectively, for semi-honest
@@ -434,7 +559,7 @@ To run the tutorial with two parties on one machine, run:
 `./mascot-party.x -N 2 -I -p 1 tutorial` (in a separate terminal)
 
 Using `-I` activates interactive mode, which means that inputs are
-solicitated from standard input, and outputs are given to any
+solicited from standard input, and outputs are given to any
 party. Omitting `-I` leads to inputs being read from
 `Player-Data/Input-P<party number>-0` in text format.
 
@@ -456,8 +581,9 @@ argument to change that.
 
 ### Yao's garbled circuits
 
-We use half-gate garbling as described by [Guo et
-al.](https://eprint.iacr.org/2014/756.pdf). Alternatively, you can
+We use half-gate garbling as described by [Zahur et
+al.](https://eprint.iacr.org/2014/756.pdf) and [Guo et
+al.](https://eprint.iacr.org/2019/1168.pdf). Alternatively, you can
 activate the implementation optimized by [Bellare et
 al.](https://eprint.iacr.org/2013/426) by adding `MY_CFLAGS +=
 -DFULL_GATES` to `CONFIG.mine`.
@@ -496,22 +622,24 @@ The following table shows all programs for honest-majority computation:
 | `rep4-ring-party.x` | Replicated | Mod 2^k | Y | 4 | `rep4-ring.sh` |
 | `replicated-bin-party.x` | Replicated | Binary | N | 3 | `replicated.sh` |
 | `malicious-rep-bin-party.x` | Replicated | Binary | Y | 3 | `mal-rep-bin.sh` |
+| `ps-rep-bin-party.x` | Replicated | Binary | Y | 3 | `ps-rep-bin.sh` |
 | `replicated-field-party.x` | Replicated | Mod prime | N | 3 | `rep-field.sh` |
 | `ps-rep-field-party.x` | Replicated | Mod prime | Y | 3 | `ps-rep-field.sh` |
 | `sy-rep-field-party.x` | SPDZ-wise replicated | Mod prime | Y | 3 | `sy-rep-field.sh` |
 | `malicious-rep-field-party.x` | Replicated | Mod prime | Y | 3 | `mal-rep-field.sh` |
+| `atlas-party.x` | [ATLAS](https://eprint.iacr.org/2021/833) | Mod prime | N | 3 or more | `atlas.sh` |
 | `shamir-party.x` | Shamir | Mod prime | N | 3 or more | `shamir.sh` |
 | `malicious-shamir-party.x` | Shamir | Mod prime | Y | 3 or more | `mal-shamir.sh` |
-| `sy-shamir-party.x` | SPDZ-wise Shamir | Mod prime | Y | 3 or more | `mal-shamir.sh` |
+| `sy-shamir-party.x` | SPDZ-wise Shamir | Mod prime | Y | 3 or more | `sy-shamir.sh` |
 | `ccd-party.x` | CCD/Shamir | Binary | N | 3 or more | `ccd.sh` |
 | `malicious-cdd-party.x` | CCD/Shamir | Binary | Y | 3 or more | `mal-ccd.sh` |
 
 We use the "generate random triple optimistically/sacrifice/Beaver"
 methodology described by [Lindell and
 Nof](https://eprint.iacr.org/2017/816) to achieve malicious
-security with plain replicated secret sharing,
+security with plain arithmetic replicated secret sharing,
 except for the "PS" (post-sacrifice) protocols where the
-actual multiplication is executed optimistally and checked later as
+actual multiplication is executed optimistically and checked later as
 also described by Lindell and Nof.
 The implementations used by `brain-party.x`,
 `malicious-rep-ring-party.x -S`, `malicious-rep-ring-party.x`,
@@ -535,6 +663,13 @@ secret value and information-theoretic tag similar to SPDZ but not
 with additive secret sharing, hence the name.
 Rep4 refers to the four-party protocol by [Dalskov et
 al.](https://eprint.iacr.org/2020/1330).
+`malicious-rep-bin-party.x` is based on cut-and-choose triple
+generation by [Furukawa et al.](https://eprint.iacr.org/2016/944) but
+using Beaver multiplication instead of their post-sacrifice
+approach. `ps-rep-bin-party.x` is based on the post-sacrifice approach
+by [Araki et
+al.](https://www.ieee-security.org/TC/SP2017/papers/96.pdf) but
+without using their cache optimization.
 
 All protocols in this section require encrypted channels because the
 information received by the honest majority suffices the reconstruct
@@ -640,9 +775,13 @@ script, the inputs are read from `Player-Data/Input-P<playerno>-0`.
 
 In this section we show how to benchmark purely the data-dependent
 (often called online) phase of some protocols. This requires to
-generate the output of a previous phase insecurely. You will have to
-(re)compile the software after adding `MY_CFLAGS = -DINSECURE` to
-`CONFIG.mine` in order to run this insecure generation.
+generate the output of a previous phase. There are two options to do
+that:
+1. For select protocols, you can run [preprocessing as
+   required](#preprocessing-as-required).
+2. You can run insecure preprocessing. For this, you will have to
+   (re)compile the software after adding `MY_CFLAGS = -DINSECURE` to
+   `CONFIG.mine` in order to run this insecure generation.
 
 ### SPDZ
 
@@ -671,7 +810,7 @@ This sets up parameters for the online phase for 2 parties with a 128-bit prime 
 
 Parameters can be customised by running
 
-`Scripts/setup-online.sh <nparties> <nbitsp> <nbits2>`
+`Scripts/setup-online.sh <nparties> <nbitsp> [<nbits2>]`
 
 
 #### To compile a program
@@ -722,7 +861,7 @@ can be produced as follows:
 
 `./Fake-Offline.x <nparties> -e <edaBit length,...>`
 
-The `-e` command-line parameters accepts a list of integers seperated
+The `-e` command-line parameters accepts a list of integers separated
 by commas.
 
 You can then run the protocol with argument `-F`. Note that when
@@ -763,6 +902,30 @@ Circuit ORAM or linear scan without ORAM.
 compiler to remove dead code. This is useful for more complex programs
 such as this one.
 3) Run `gc_oram` in the virtual machines as explained above.
+
+## Preprocessing as required
+
+For select protocols, you can run all required preprocessing but not
+the actual computation. First, compile the binary:
+
+`make <protocol>-offline.x`
+
+At the time of writing the supported protocols are `mascot`,
+`cowgear`, and `mal-shamir`.
+
+If you have not done so already, then compile your high-level program:
+
+`./compile.py <program>`
+
+Finally, run the parties as follows:
+
+`./<protocol>-offline.x -p 0 & ./<protocol>-offline.x -p 1 & ...`
+
+The options for the network setup are the same as for the complete
+computation above.
+
+If you run the preprocessing on different hosts, make sure to use the
+same player number in the preprocessing and the online phase.
 
 ## Benchmarking offline phases
 

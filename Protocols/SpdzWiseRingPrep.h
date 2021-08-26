@@ -31,9 +31,16 @@ class SpdzWiseRingPrep : public virtual SpdzWisePrep<T>,
     }
 
 public:
+    static void edabit_sacrifice_buckets(vector<edabit<T>>&, size_t, bool, int,
+            SubProcessor<T>&, int, int, const void* = 0)
+    {
+        throw runtime_error("no need for sacrifice");
+    }
+
     SpdzWiseRingPrep(SubProcessor<T>* proc, DataPositions& usage) :
         BufferPrep<T>(usage),
         BitPrep<T>(proc, usage), RingPrep<T>(proc, usage),
+        MaliciousDabitOnlyPrep<T>(proc, usage),
         SpdzWisePrep<T>(proc, usage), RepRingOnlyEdabitPrep<T>(proc, usage)
     {
     }

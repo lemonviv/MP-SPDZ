@@ -21,6 +21,7 @@
 #include "ShareParty.h"
 #include "ShareThread.hpp"
 #include "Thread.hpp"
+#include "VectorProtocol.hpp"
 
 namespace GC
 {
@@ -157,7 +158,7 @@ void Processor<T>::inputb(typename T::Input& input, ProcessorBase& input_process
             for (int i = 0; i < DIV_CEIL(x.n_bits, dl); i++)
             {
                 auto& res = S[x.dest + i];
-                res.my_input(input, bigint(whole_input >> (i * dl)).get_si(),
+                res.my_input(input, bigint(whole_input >> (i * dl)).get_ui(),
                         min(dl, x.n_bits - i * dl));
             }
         }
@@ -242,9 +243,9 @@ void ShareSecret<U>::reveal_inst(Processor<U>& processor,
             assert(U::default_length == Clear::N_BITS);
         for (int j = 0; j < DIV_CEIL(n, U::default_length); j++)
         {
-            shares.push_back(
-                    processor.S[r1 + j].mask(
-                            min(U::default_length, n - j * U::default_length)));
+            shares.push_back({});
+            processor.S[r1 + j].mask(shares.back(),
+                    min(U::default_length, n - j * U::default_length));
         }
     }
     assert(party.MC);

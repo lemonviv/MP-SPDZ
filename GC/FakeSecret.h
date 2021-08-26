@@ -70,7 +70,7 @@ public:
     static const true_type invertible;
     static const true_type characteristic_two;
 
-    static DataFieldType field_type() { return DATA_GF2; }
+    static int threshold(int) { return 0; }
 
     static MC* new_mc(mac_key_type key) { return new MC(key); }
 
@@ -141,7 +141,7 @@ public:
 
     void reveal(int n_bits, Clear& x) { (void) n_bits; x = a; }
 
-    void invert(FakeSecret) { throw not_implemented(); }
+    FakeSecret invert() const { throw not_implemented(); }
 
     void input(istream&, bool) { throw not_implemented(); }
 

@@ -1,17 +1,53 @@
+#ifndef MATH_MODP_HPP_
+#define MATH_MODP_HPP_
+
 #include "Zp_Data.h"
 #include "modp.h"
 #include "Z2k.hpp"
+#include "gfpvar.h"
 
-#include "Exceptions/Exceptions.h"
+#include "Tools/Exceptions.h"
 
 /***********************************************************************
  *  The following functions remain the same in Real and Montgomery rep *
  ***********************************************************************/
 
 template<int L>
+modp_<L> modp_<L>::add(const modp_& other, const Zp_Data& ZpD) const
+{
+  modp_ res;
+  Add(res, *this, other, ZpD);
+  return res;
+}
+
+template<int L>
+modp_<L> modp_<L>::sub(const modp_& other, const Zp_Data& ZpD) const
+{
+  modp_ res;
+  Sub(res, *this, other, ZpD);
+  return res;
+}
+
+template<int L>
+modp_<L> modp_<L>::mul(const modp_& other, const Zp_Data& ZpD) const
+{
+  modp_ res;
+  Mul(res, *this, other, ZpD);
+  return res;
+}
+
+template<int L>
 void modp_<L>::randomize(PRNG& G, const Zp_Data& ZpD)
 {
-  G.randomBnd(x, ZpD.get_prA(), ZpD.pr_byte_length, ZpD.overhang_mask());
+  const int M = sizeof(mp_limb_t) * L;
+  switch (ZpD.pr_byte_length)
+  {
+#define X(LL) case LL: G.randomBnd<LL>(x, ZpD.get_prA(), ZpD.overhang_mask()); break;
+  X(M) X(M-1) X(M-2) X(M-3) X(M-4) X(M-5) X(M-6) X(M-7)
+#undef X
+  default:
+    G.randomBnd(x, ZpD.get_prA(), ZpD.pr_byte_length, ZpD.overhang_mask());
+  }
 }
 
 template<int L>
@@ -161,7 +197,7 @@ void to_modp(modp_<L>& ans,int x,const Zp_Data& ZpD)
 
 
 template<int L>
-void to_modp(modp_<L>& ans,const bigint& x,const Zp_Data& ZpD)
+void to_modp(modp_<L>& ans,const mpz_class& x,const Zp_Data& ZpD)
 {
   if (x == 0)
   {
@@ -214,6 +250,12 @@ void modp_<L>::convert(const mp_limb_t* source, mp_size_t size, const Zp_Data& Z
     ZpD.Mont_Mult(x, x, ZpD.R2);
 }
 
+template<int L>
+void modp_<L>::zero_overhang(const Zp_Data& ZpD)
+{
+  x[ZpD.get_t() - 1] &= ZpD.overhang_mask();
+}
+
 
 
 template<int L>
@@ -245,7 +287,7 @@ void Inv(modp_<L>& ans,const modp_<L>& x,const Zp_Data& ZpD)
   else
     { for (int i=sz; i<ZpD.t; i++) { ans.x[i]=0; } }
   if (ZpD.montgomery)
-    { ZpD.Mont_Mult(ans.x,ans.x,ZpD.R3); }
+    { ZpD.Mont_Mult_max(ans.x,ans.x,ZpD.R3,L); }
 }
 
 
@@ -318,3 +360,5 @@ void modp_<L>::input(istream& s,const Zp_Data& ZpD,bool human)
   else
     { s.read((char*) x,ZpD.t*sizeof(mp_limb_t)); }
 }
+
+#endif

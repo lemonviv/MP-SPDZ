@@ -7,6 +7,8 @@
 #include "FHEOffline/PairwiseGenerator.h"
 #include "FHEOffline/PairwiseMachine.h"
 
+#include "Math/modp.hpp"
+
 template <class FD>
 Multiplier<FD>::Multiplier(int offset, PairwiseGenerator<FD>& generator) :
         Multiplier(offset, generator.machine, generator.P, generator.timers)
@@ -43,7 +45,7 @@ template <class FD>
 void Multiplier<FD>::multiply_and_add(Plaintext_<FD>& res,
         const Ciphertext& enc_a, const Rq_Element& b, OT_ROLE role)
 {
-    octetStream o;
+    o.reset_write_head();
 
     if (role & SENDER)
     {

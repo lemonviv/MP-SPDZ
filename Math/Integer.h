@@ -15,6 +15,7 @@ using namespace std;
 #include "field_types.h"
 #include "Z2k.h"
 #include "ValueInterface.h"
+#include "gf2nlong.h"
 
 
 // Functionality shared between integers and bit vectors
@@ -85,6 +86,7 @@ public:
   T& operator&=(const IntBase& other) { return a &= other.a; }
 
   friend ostream& operator<<(ostream& s, const IntBase& x) { x.output(s, true); return s; }
+  friend istream& operator>>(istream& s, IntBase& x) { x.input(s, true); return s; }
 
   void randomize(PRNG& G);
   void almost_randomize(PRNG& G) { randomize(G); }
@@ -123,6 +125,7 @@ class Integer : public IntBase<long>
   Integer(const Z2<K>& x) : Integer(x.get_limb(0)) {}
   template<int X, int L>
   Integer(const gfp_<X, L>& x);
+  Integer(int128 x) : Integer(x.get_lower()) {}
 
   Integer(const Integer& x, int n_bits);
 
@@ -143,22 +146,6 @@ class Integer : public IntBase<long>
   friend unsigned int& operator+=(unsigned int& x, const Integer& other) { return x += other.a; }
 
   long operator-() const { return -a; }
-
-  void add(const Integer& x, const Integer& y) { *this = x + y; }
-  void sub(const Integer& x, const Integer& y) { *this = x - y; }
-  void mul(const Integer& x, const Integer& y) { *this = x * y; }
-
-  void mul(const Integer& x) { *this = *this * x; }
-
-  void invert() { throw runtime_error("cannot invert integer"); }
-  void invert(const Integer& _) { (void)_; invert(); }
-
-  void AND(const Integer& x, const Integer& y) { *this = x & y; }
-  void OR(const Integer& x, const Integer& y) { *this = x | y; }
-  void XOR(const Integer& x, const Integer& y) { *this = x ^ y; }
-  void SHL(const Integer& x, const Integer& y) { *this = x << y; }
-  // unsigned shift for Mod2m
-  void SHR(const Integer& x, const Integer& y) { *this = (unsigned long)x.a >> y.a; }
 };
 
 inline string to_string(const Integer& x)
@@ -201,7 +188,7 @@ Integer Integer::convert_unsigned(const gfp_<X, L>& other)
 template<int K>
 Integer Integer::convert_unsigned(const Z2<K>& other)
 {
-  return bigint::tmp = other;
+  return other;
 }
 
 // slight misnomer

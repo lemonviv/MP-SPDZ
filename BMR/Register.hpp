@@ -56,7 +56,7 @@ void EvalRegister::store_clear_in_dynamic(GC::Memory<T>& mem,
 		T& dest = mem[access.address];
 		GC::Clear value = access.value;
 		ProgramParty& party = ProgramParty::s();
-		dest.assign(value.get(), party.get_id() - 1, party.get_mac_key().get());
+		dest = T::constant(value.get(), party.get_id() - 1, party.get_mac_key().get());
 #ifdef DEBUG_DYNAMIC
 		cout << "store clear " << dest.share << " " << dest.mac << " " << value << endl;
 #endif
@@ -105,9 +105,9 @@ void EvalRegister::store(GC::Memory<U>& mem,
 			U tmp;
 			gf2n_long ext = (int)reg.get_external();
 			//cout << "ext:" << ext << "/" << (int)reg.get_external() << " " << endl;
-			tmp.add(spdz_wire.mask, ext, (int)party.get_id() - 1, party.get_mac_key());
+			tmp = spdz_wire.mask + U::constant(ext, (int)party.get_id() - 1, party.get_mac_key());
 			S.push_back(tmp);
-			tmp *= gf2n_long(1) << i;
+			tmp <<= i;
 			dest += tmp;
 			const Key& key = reg.external_key(party.get_id());
 			Key& expected_key = spdz_wire.my_keys[(int)reg.get_external()];
@@ -236,7 +236,7 @@ void EvalRegister::load(vector<GC::ReadAccess<T> >& accesses,
 		}
 	}
 
-	party.P->Broadcast_Receive(keys, true);
+	party.P->unchecked_broadcast(keys);
 
 	int base = 0;
 	for (auto access : accesses)

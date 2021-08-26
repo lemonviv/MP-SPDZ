@@ -35,25 +35,13 @@ protected:
 
 
 public:
-	typedef void Inp;
-	typedef void PO;
 	typedef void Square;
-
-	class DummyZ2kProtocol
-	{
-	public:
-	    static void assign(Z2& _,  const Z2& __, int& ___)
-        {
-            (void) _, (void) __, (void) ___;
-            throw not_implemented();
-        }
-	};
-	typedef DummyZ2kProtocol Protocol;
 
 	static const int N_BITS = K;
 	static const int MAX_EDABITS = K;
+	static const int MAX_N_BITS = K;
 	static const int N_BYTES = (K + 7) / 8;
-        static const uint64_t UPPER_MASK = uint64_t(-1LL) >> (N_LIMB_BITS - 1 - (K - 1) % N_LIMB_BITS);
+	static const mp_limb_t UPPER_MASK = mp_limb_t(-1LL) >> (N_LIMB_BITS - 1 - (K - 1) % N_LIMB_BITS);
 
 	static int size() { return N_BYTES; }
 	static int size_in_limbs() { return N_WORDS; }
@@ -83,10 +71,10 @@ public:
 	typedef Z2 Scalar;
 
 	Z2() { assign_zero(); }
-	Z2(uint64_t x) : Z2() { a[0] = x; }
+	Z2(mp_limb_t x) : Z2() { a[0] = x; }
 	Z2(__m128i x) : Z2() { avx_memcpy(a, &x, min(N_BYTES, 16)); }
 	Z2(int x) : Z2(long(x)) { a[N_WORDS - 1] &= UPPER_MASK; }
-	Z2(long x) : Z2(uint64_t(x)) { if (K > 64 and x < 0) memset(&a[1], -1, N_BYTES - 8); }
+	Z2(long x) : Z2(mp_limb_t(x)) { if (K > 64 and x < 0) memset(&a[1], -1, N_BYTES - 8); }
 	template<class T>
 	Z2(const IntBase<T>& x);
 	Z2(const bigint& x);
@@ -109,11 +97,9 @@ public:
 	const mp_limb_t* get() const { return a; }
 
 	void convert_destroy(bigint& a) { *this = a; }
-
-	void negate() { 
-		throw not_implemented();
-	}
 	
+	int bit_length() const;
+
 	Z2<K> operator+(const Z2<K>& other) const;
 	Z2<K> operator-(const Z2<K>& other) const;
 
@@ -126,53 +112,36 @@ public:
 	Z2<K> operator/(const Z2& other) const { (void) other; throw division_by_zero(); }
 
 	Z2<K> operator&(const Z2& other) const;
+	Z2<K> operator^(const Z2& other) const;
+	Z2<K> operator|(const Z2& other) const;
 
 	Z2<K>& operator+=(const Z2<K>& other);
 	Z2<K>& operator-=(const Z2<K>& other);
+        Z2<K>& operator*=(const Z2<K>& other);
 	Z2<K>& operator&=(const Z2<K>& other);
 	Z2<K>& operator<<=(int other);
 	Z2<K>& operator>>=(int other);
 
 	Z2<K> operator<<(int i) const;
 	Z2<K> operator>>(int i) const;
+	Z2<K> operator<<(const Z2<K>& i) const { return *this << i.a[0]; }
+	Z2<K> operator>>(const Z2<K>& i) const { return *this >> i.a[0]; }
 
 	bool operator==(const Z2<K>& other) const;
 	bool operator!=(const Z2<K>& other) const { return not (*this == other); }
 
-	void add(const Z2<K>& a, const Z2<K>& b) { *this = a + b; }
-	void add(const Z2<K>& a) { *this += a; }
-	void sub(const Z2<K>& a, const Z2<K>& b) { *this = a - b; }
-
-	template <int M, int L>
-	void mul(const Z2<M>& a, const Z2<L>& b) { *this = Z2<K>::Mul(a, b); }
-	template <int L>
-	void mul(const Integer& a, const Z2<L>& b) { *this = Z2<K>::Mul(Z2<64>(a), b); }
-
-	void mul(const Z2& a) { *this = Z2::Mul(*this, a); }
-
-	void add(octetStream& os) { add(os.consume(size())); }
+	void add(octetStream& os) { *this += (os.consume(size())); }
 
 	Z2 lazy_add(const Z2& x) const;
 	Z2 lazy_mul(const Z2& x) const;
 
-	Z2& invert();
-	void invert(const Z2& a) { *this = a; invert(); }
+	Z2 invert() const;
 
 	Z2 sqrRoot();
 
 	bool is_zero() const { return *this == Z2<K>(); }
 	bool is_one() const { return *this == 1; }
 	bool is_bit() const { return is_zero() or is_one(); }
-
-	void SHL(const Z2& a, const bigint& i) { *this = a << i.get_ui(); }
-	void SHR(const Z2& a, const bigint& i) { *this = a >> i.get_ui(); }
-
-	void SHL(const Z2& a, int i) { *this = a << i; }
-	void SHR(const Z2& a, int i) { *this = a >> i; }
-
-	void AND(const Z2& a, const Z2& b);
-	void OR(const Z2& a, const Z2& b);
-	void XOR(const Z2& a, const Z2& b);
 
 	void randomize(PRNG& G, int n = -1);
 	void randomize_part(PRNG& G, int n);
@@ -230,6 +199,11 @@ public:
             Z2<K>(other)
     {
         extend(other);
+    }
+
+    void to(bigint& res) const
+    {
+        res = *this;
     }
 
     bool negative() const
@@ -322,6 +296,13 @@ Z2<K>& Z2<K>::operator-=(const Z2<K>& other)
 }
 
 template <int K>
+Z2<K>& Z2<K>::operator*=(const Z2<K>& other)
+{
+        *this = *this * other;
+        return *this;
+}
+
+template <int K>
 Z2<K>& Z2<K>::operator&=(const Z2<K>& other)
 {
 	*this = *this & other;
@@ -411,7 +392,7 @@ void Z2<K>::randomize_part(PRNG& G, int n)
 {
 	*this = {};
 	G.get_octets((octet*)a, DIV_CEIL(n, 8));
-	a[DIV_CEIL(n, 64) - 1] &= uint64_t(-1LL) >> (N_LIMB_BITS - 1 - (n - 1) % N_LIMB_BITS);
+	a[DIV_CEIL(n, 64) - 1] &= mp_limb_t(-1LL) >> (N_LIMB_BITS - 1 - (n - 1) % N_LIMB_BITS);
 }
 
 template<int K>
@@ -426,12 +407,6 @@ void Z2<K>::unpack(octetStream& o, int n)
 {
 	(void) n;
 	o.consume((octet*)a, N_BYTES);
-}
-
-template<int K>
-void to_gfp(Z2<K>& res, const bigint& a)
-{
-	res = a;
 }
 
 template<int K>
@@ -460,12 +435,6 @@ ostream& operator<<(ostream& o, const SignedZ2<K>& x)
 {
     x.output(o, true);
     return o;
-}
-
-template<int K>
-void to_bigint(bigint& res, const SignedZ2<K>& a)
-{
-    res = a;
 }
 
 #endif /* MATH_Z2K_H_ */

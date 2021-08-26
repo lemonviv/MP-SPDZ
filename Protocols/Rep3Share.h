@@ -37,6 +37,11 @@ public:
         return 1;
     }
 
+    static void specification(octetStream& os)
+    {
+        T::specification(os);
+    }
+
     RepShare()
     {
     }
@@ -46,43 +51,10 @@ public:
     {
     }
 
-    void add(const This& x, const This& y)
+    void pack(octetStream& os, T) const
     {
-        *this = x + y;
+        pack(os, false);
     }
-    void sub(const This& x, const This& y)
-    {
-        *this = x - y;
-    }
-
-    template<class U>
-    void add(const U& S, const clear aa, int my_num,
-            const T& alphai)
-    {
-        (void)alphai;
-        *this = S + S.constant(aa, my_num);
-    }
-    template<class U>
-    void sub(const U& S, const clear& aa, int my_num,
-            const T& alphai)
-    {
-        (void)alphai;
-        *this = S - S.constant(aa, my_num);
-    }
-    template<class U>
-    void sub(const clear& aa, const U& S, int my_num,
-            const T& alphai)
-    {
-        (void)alphai;
-        *this = S.constant(aa, my_num) - S;
-    }
-
-    void mul_by_bit(const This& x, const T& y)
-    {
-        (void) x, (void) y;
-        throw runtime_error("multiplication by bit not implemented");
-    }
-
     void pack(octetStream& os, bool full = true) const
     {
         if (full)
@@ -156,12 +128,6 @@ public:
         Replicated<Rep3Share>::assign(*this, value, my_num);
     }
 
-    // Share<T> compatibility
-    void assign(clear other, int my_num, const T& alphai)
-    {
-        (void)alphai;
-        *this = Rep3Share(other, my_num);
-    }
     void assign(const char* buffer)
     {
         FixedVec<T, 2>::assign(buffer);

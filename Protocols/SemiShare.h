@@ -8,7 +8,6 @@
 
 #include "Protocols/Beaver.h"
 #include "Processor/DummyProtocol.h"
-#include "Processor/NoLivePrep.h"
 #include "ShareInterface.h"
 
 #include <string>
@@ -27,7 +26,23 @@ template<class T> class OTTripleGenerator;
 namespace GC
 {
 class SemiSecret;
+class NoValue;
 }
+
+template<class T>
+class BasicSemiShare : public T
+{
+public:
+    typedef T open_type;
+    typedef T clear;
+
+    typedef GC::NoValue mac_key_type;
+
+    template<class U>
+    BasicSemiShare(const U& other) : T(other)
+    {
+    }
+};
 
 template<class T>
 class SemiShare : public T, public ShareInterface
@@ -83,42 +98,12 @@ public:
     SemiShare(const clear& other, int my_num, const T& alphai = {})
     {
         (void) alphai;
-        assign(other, my_num);
-    }
-
-    void assign(const clear& other, int my_num, const T& alphai = {})
-    {
-        (void) alphai;
         Protocol::assign(*this, other, my_num);
     }
+
     void assign(const char* buffer)
     {
         super::assign(buffer);
-    }
-
-    void add(const SemiShare& x, const SemiShare& y)
-    {
-        *this = x + y;
-    }
-    void sub(const SemiShare& x, const SemiShare& y)
-    {
-        *this = x - y;
-    }
-
-    void add(const SemiShare& S, const clear aa, int my_num, const T& alphai)
-    {
-        (void) alphai;
-        *this = S + SemiShare(aa, my_num);
-    }
-    void sub(const SemiShare& S, const clear& aa, int my_num, const T& alphai)
-    {
-        (void) alphai;
-        *this = S - SemiShare(aa, my_num);
-    }
-    void sub(const clear& aa, const SemiShare& S, int my_num, const T& alphai)
-    {
-        (void) alphai;
-        *this = SemiShare(aa, my_num) - S;
     }
 
     void pack(octetStream& os, bool full = true) const

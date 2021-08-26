@@ -19,6 +19,8 @@
 #include "Processor/Data_Files.hpp"
 #include "Processor/Input.hpp"
 #include "GC/TinyPrep.hpp"
+#include "GC/VectorProtocol.hpp"
+#include "GC/CcdPrep.hpp"
 
 #include <assert.h>
 
@@ -103,14 +105,14 @@ void run(int argc, const char** argv)
     OnlineOptions::singleton.batch_size = 1;
     typename pShare::Direct_MC MCp(keyp);
     ArithmeticProcessor _({}, 0);
-    typename pShare::LivePrep sk_prep(0, usage);
+    typename pShare::TriplePrep sk_prep(0, usage);
     GC::ShareThread<typename pShare::bit_type> thread(N,
             OnlineOptions::singleton, P, {}, usage);
     SubProcessor<pShare> sk_proc(_, MCp, sk_prep, P);
     pShare sk, __;
     // synchronize
     Bundle<octetStream> bundle(P);
-    P.Broadcast_Receive(bundle, false);
+    P.unchecked_broadcast(bundle);
     Timer timer;
     timer.start();
     auto stats = P.comm_stats;
@@ -119,7 +121,7 @@ void run(int argc, const char** argv)
     (P.comm_stats - stats).print(true);
 
     OnlineOptions::singleton.batch_size = (1 + pShare::Protocol::uses_triples) * n_tuples;
-    typename pShare::LivePrep prep(0, usage);
+    typename pShare::TriplePrep prep(0, usage);
     prep.params.correlation_check &= not opt.isSet("-U");
     prep.params.fewer_rounds = opt.isSet("-A");
     prep.params.fiat_shamir = opt.isSet("-H");

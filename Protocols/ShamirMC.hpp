@@ -9,6 +9,16 @@
 #include "ShamirMC.h"
 
 template<class T>
+ShamirMC<T>::ShamirMC(int t) :
+        os(0), player(0), threshold()
+{
+    if (t > 0)
+        threshold = t;
+    else
+        threshold = ShamirMachine::s().threshold;
+}
+
+template<class T>
 ShamirMC<T>::~ShamirMC()
 {
     if (os)
@@ -21,29 +31,36 @@ void ShamirMC<T>::POpen_Begin(vector<typename T::open_type>& values,
 {
     (void) values;
     prepare(S, P);
-    P.send_all(os->mine, true);
+    P.send_all(os->mine);
+}
+
+template<class T>
+vector<typename T::open_type::Scalar> ShamirMC<T>::get_reconstruction(
+        const Player& P)
+{
+    int n_relevant_players = threshold + 1;
+    vector<rec_type> reconstruction(n_relevant_players);
+    for (int i = 0; i < n_relevant_players; i++)
+        reconstruction[i] = Shamir<T>::get_rec_factor(P.get_player(i),
+                P.num_players(), P.my_num(), n_relevant_players);
+    return reconstruction;
 }
 
 template<class T>
 void ShamirMC<T>::init_open(const Player& P, int n)
 {
-    int n_relevant_players = ShamirMachine::s().threshold + 1;
     if (reconstruction.empty())
     {
-        reconstruction.resize(n_relevant_players, 1);
-        for (int i = 0; i < n_relevant_players; i++)
-            reconstruction[i] = Shamir<T>::get_rec_factor(i,
-                    n_relevant_players);
+        reconstruction = get_reconstruction(P);
     }
 
     if (not os)
         os = new Bundle<octetStream>(P);
 
     for (auto& o : *os)
-        o.clear();
-    send = P.my_num() <= threshold;
-    if (send)
-        os->mine.reserve(n * T::size());
+        o.reset_write_head();
+    os->mine.reserve(n * T::size());
+    this->player = &P;
 }
 
 template<class T>
@@ -57,8 +74,7 @@ void ShamirMC<T>::prepare(const vector<T>& S, const Player& P)
 template<class T>
 void ShamirMC<T>::prepare_open(const T& share)
 {
-    if (send)
-        share.pack(os->mine);
+    share.pack(os->mine);
 }
 
 template<class T>
@@ -73,19 +89,13 @@ void ShamirMC<T>::POpen(vector<typename T::open_type>& values, const vector<T>& 
 template<class T>
 void ShamirMC<T>::exchange(const Player& P)
 {
-    for (int offset = 1; offset < P.num_players(); offset++)
+    vector<bool> my_senders(P.num_players()), my_receivers(P.num_players());
+    for (int i = 0; i < P.num_players(); i++)
     {
-        int send_to = P.get_player(offset);
-        int receive_from = P.get_player(-offset);
-        bool receive = receive_from <= threshold;
-        if (send)
-            if (receive)
-                P.pass_around(os->mine, (*os)[receive_from], offset);
-            else
-                P.send_to(send_to, os->mine, true);
-        else if (receive)
-            P.receive_player(receive_from, (*os)[receive_from], true);
+        my_senders[i] = P.get_offset(i) <= threshold;
+        my_receivers[i] = P.get_offset(i) >= P.num_players() - threshold;
     }
+    P.partial_broadcast(my_senders, my_receivers, *os);
 }
 
 template<class T>
@@ -112,10 +122,50 @@ typename T::open_type ShamirMC<T>::finalize_open()
     typename T::open_type res;
     for (size_t j = 0; j < reconstruction.size(); j++)
     {
-        res += (*os)[j].template get<typename T::open_type>() * reconstruction[j];
+        res +=
+                (*os)[player->get_player(j)].template get<typename T::open_type>()
+                        * reconstruction[j];
     }
 
     return res;
+}
+
+template<class T>
+void IndirectShamirMC<T>::exchange(const Player& P)
+{
+    oss.resize(P.num_players());
+    int threshold = ShamirMachine::s().threshold;
+    if (P.my_num() <= threshold)
+    {
+        oss[0].reset_write_head();
+        auto rec_factor = Shamir<T>::get_rec_factor(P.my_num(), threshold + 1);
+        for (auto& x : this->secrets)
+            (x * rec_factor).pack(oss[0]);
+        vector<vector<bool>> channels(P.num_players(),
+                vector<bool>(P.num_players()));
+        for (int i = 0; i <= threshold; i++)
+            channels[i][0] = true;
+        P.send_receive_all(channels, oss, oss);
+    }
+
+    if (P.my_num() == 0)
+    {
+        os.reset_write_head();
+        while (oss[0].left())
+        {
+            T sum;
+            for (int i = 0; i <= threshold; i++)
+                sum += oss[i].template get<T>();
+            sum.pack(os);
+        }
+        P.send_all(os);
+    }
+
+    if (P.my_num() != 0)
+        P.receive_player(0, os);
+
+    while (os.left())
+        this->values.push_back(os.get<T>());
 }
 
 #endif

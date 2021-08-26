@@ -4,14 +4,20 @@
  */
 
 #include "BaseMachine.h"
+#include "Math/Setup.h"
 
 #include <iostream>
 #include <sodium.h>
-#include <regex>
 using namespace std;
 
 BaseMachine* BaseMachine::singleton = 0;
 thread_local int BaseMachine::thread_num;
+
+void print_usage(ostream& o, const char* name, size_t capacity)
+{
+  if (capacity)
+    o << name << "=" << capacity << " ";
+}
 
 BaseMachine& BaseMachine::s()
 {
@@ -29,7 +35,7 @@ BaseMachine::BaseMachine() : nthreads(0)
     singleton = this;
 }
 
-void BaseMachine::load_schedule(string progname, bool load_bytecode)
+void BaseMachine::load_schedule(const string& progname, bool load_bytecode)
 {
   this->progname = progname;
   string fname = "Programs/Schedules/" + progname + ".sch";
@@ -56,9 +62,10 @@ void BaseMachine::load_schedule(string progname, bool load_bytecode)
   string threadname;
   for (int i=0; i<nprogs; i++)
     { inpf >> threadname;
+      string filename = "Programs/Bytecode/" + threadname + ".bc";
+      bc_filenames.push_back(filename);
       if (load_bytecode)
         {
-          string filename = "Programs/Bytecode/" + threadname + ".bc";
 #ifdef DEBUG_FILES
           cerr << "Loading program " << i << " from " << filename << endl;
 #endif
@@ -76,6 +83,8 @@ void BaseMachine::load_schedule(string progname, bool load_bytecode)
 
   inpf.get();
   getline(inpf, compiler);
+  getline(inpf, domain);
+  getline(inpf, relevant_opts);
   inpf.close();
 }
 
@@ -87,7 +96,7 @@ void BaseMachine::print_compiler()
 #endif
 }
 
-void BaseMachine::load_program(string threadname, string filename)
+void BaseMachine::load_program(const string& threadname, const string& filename)
 {
   (void)threadname;
   (void)filename;
@@ -120,24 +129,45 @@ void BaseMachine::print_timers()
     cerr << "Time" << it->first << " = " << it->second.elapsed() << " seconds " << endl;
 }
 
-string BaseMachine::memory_filename(string type_short, int my_number)
+string BaseMachine::memory_filename(const string& type_short, int my_number)
 {
   return PREP_DIR "Memory-" + type_short + "-P" + to_string(my_number);
 }
 
-int BaseMachine::ring_size_from_schedule(string progname)
+string BaseMachine::get_domain(string progname)
 {
   assert(not singleton);
   BaseMachine machine;
   singleton = 0;
   machine.load_schedule(progname, false);
-  smatch m;
-  regex e("R ([0-9]+)");
-  regex_search(machine.compiler, m, e);
-  if (m.size() > 1)
+  return machine.domain;
+}
+
+int BaseMachine::ring_size_from_schedule(string progname)
+{
+  string domain = get_domain(progname);
+  if (domain.substr(0, 2).compare("R:") == 0)
   {
-    return stoi(m[1]);
+    return stoi(domain.substr(2));
   }
+  else
+    return 0;
+}
+
+int BaseMachine::prime_length_from_schedule(string progname)
+{
+  string domain = get_domain(progname);
+  if (domain.substr(0, 4).compare("lgp:") == 0)
+    return stoi(domain.substr(4));
+  else
+    return 0;
+}
+
+bigint BaseMachine::prime_from_schedule(string progname)
+{
+  string domain = get_domain(progname);
+  if (domain.substr(0, 2).compare("p:") == 0)
+    return bigint(domain.substr(2));
   else
     return 0;
 }

@@ -10,7 +10,6 @@ using namespace std;
 #include "Protocols/Share.h"
 #include "Networking/Player.h"
 #include "Protocols/MAC_Check_Base.h"
-#include "Protocols/RandomPrep.h"
 #include "Tools/time-func.h"
 
 
@@ -58,7 +57,7 @@ public:
 
 
 template<class U>
-class MAC_Check_ : public TreeSum<typename U::open_type>, public MAC_Check_Base<U>
+class Tree_MAC_Check : public TreeSum<typename U::open_type>, public MAC_Check_Base<U>
 {
   typedef typename U::open_type T;
 
@@ -76,19 +75,30 @@ class MAC_Check_ : public TreeSum<typename U::open_type>, public MAC_Check_Base<
 
   public:
 
-  MAC_Check_(const typename U::mac_key_type::Scalar& ai, int opening_sum = 10,
+  Tree_MAC_Check(const typename U::mac_key_type::Scalar& ai, int opening_sum = 10,
       int max_broadcast = 10, int send_player = 0);
-  virtual ~MAC_Check_();
+  virtual ~Tree_MAC_Check();
 
   virtual void init_open(const Player& P, int n = 0);
   virtual void prepare_open(const U& secret);
   virtual void exchange(const Player& P);
 
   virtual void AddToCheck(const U& share, const T& value, const Player& P);
-  virtual void Check(const Player& P);
+  virtual void Check(const Player& P) = 0;
 
   // compatibility
   void set_random_element(const U& random_element) { (void) random_element; }
+};
+
+template<class U>
+class MAC_Check_ : public Tree_MAC_Check<U>
+{
+public:
+  MAC_Check_(const typename U::mac_key_type::Scalar& ai, int opening_sum = 10,
+      int max_broadcast = 10, int send_player = 0);
+  virtual ~MAC_Check_() {}
+
+  virtual void Check(const Player& P);
 };
 
 template<class T>
@@ -99,11 +109,11 @@ template<class T> class Spdz2kPrep;
 template<class T> class MascotPrep;
 
 template<class T, class U, class V, class W>
-class MAC_Check_Z2k : public MAC_Check_<W>
+class MAC_Check_Z2k : public Tree_MAC_Check<W>
 {
 protected:
   vector<T> shares;
-  RandomPrep<W>* prep;
+  Preprocessing<W>* prep;
 
   W get_random_element();
 
@@ -118,9 +128,13 @@ public:
 
   virtual void Check(const Player& P);
   void set_random_element(const W& random_element);
-  void set_prep(RandomPrep<W>& prep);
+  void set_prep(Preprocessing<W>& prep);
   virtual ~MAC_Check_Z2k() {};
 };
+
+template<class W>
+using MAC_Check_Z2k_ = MAC_Check_Z2k<typename W::open_type,
+        typename W::mac_key_type, typename W::open_type, W>;
 
 
 template<class T>
@@ -137,6 +151,9 @@ class Direct_MAC_Check: public MAC_Check_<T>
   int open_counter;
   vector<octetStream> oss;
 
+protected:
+  void pre_exchange(const Player& P);
+
 public:
   // legacy interface
   Direct_MAC_Check(const typename T::mac_key_type::Scalar& ai, Names& Nms, int thread_num);
@@ -145,15 +162,6 @@ public:
 
   void init_open(const Player& P, int n = 0);
   void prepare_open(const T& secret);
-  void exchange(const Player& P);
-};
-
-template <class T>
-class Passing_MAC_Check : public Direct_MAC_Check<T>
-{
-public:
-  Passing_MAC_Check(const typename T::mac_key_type::Scalar& ai);
-
   void exchange(const Player& P);
 };
 
@@ -222,7 +230,7 @@ void add_openings(vector<T>& values, const Player& P, int sum_players, int last_
     {
       int sender = senders[j];
       MC.player_timers[sender].start();
-      P.wait_receive(sender, oss[j], true);
+      P.wait_receive(sender, oss[j]);
       MC.player_timers[sender].stop();
       if ((unsigned)oss[j].get_length() < values.size() * T::size())
         {
@@ -259,7 +267,7 @@ void TreeSum<T>::start(vector<T>& values, const Player& P)
             { values[i].pack(os); }
           int receiver = positive_modulo(base_player + my_relative_num % sum_players, P.num_players());
           timers[SEND].start();
-          P.send_to(receiver,os,true);
+          P.send_to(receiver,os);
           timers[SEND].stop();
         }
 
@@ -279,7 +287,7 @@ void TreeSum<T>::start(vector<T>& values, const Player& P)
       timers[BCAST].start();
       for (int i = 1; i < max_broadcast && i < P.num_players(); i++)
         {
-          P.send_to((base_player + i) % P.num_players(), os, true);
+          P.send_to((base_player + i) % P.num_players(), os);
         }
       timers[BCAST].stop();
       AddToValues(values);
@@ -295,7 +303,7 @@ void TreeSum<T>::start(vector<T>& values, const Player& P)
           if (relative_receiver < P.num_players())
             {
               int receiver = (base_player + relative_receiver) % P.num_players();
-              P.send_to(receiver, os, true);
+              P.send_to(receiver, os);
             }
         }
       timers[BCAST].stop();
@@ -317,7 +325,7 @@ template<class T>
 void TreeSum<T>::ReceiveValues(vector<T>& values, const Player& P, int sender)
 {
   timers[RECV_SUM].start();
-  P.receive_player(sender, os, true);
+  P.receive_player(sender, os);
   timers[RECV_SUM].stop();
   for (unsigned int i = 0; i < values.size(); i++)
     values[i].unpack(os);

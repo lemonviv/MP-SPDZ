@@ -14,14 +14,15 @@ template<class T, class U>
 void bits_from_square_in_ring(vector<T>& bits, int buffer_size, U* bit_prep);
 
 template<class T>
-class Spdz2kPrep : public virtual MascotPrep<T>, public virtual RingOnlyPrep<T>
+class Spdz2kPrep : public virtual MaliciousRingPrep<T>,
+        public virtual MascotTriplePrep<T>,
+        public virtual RingOnlyPrep<T>
 {
     typedef Spdz2kShare<T::k + 2, T::s> BitShare;
     DataPositions bit_pos;
     MascotTriplePrep<BitShare>* bit_prep;
     SubProcessor<BitShare>* bit_proc;
     typename BitShare::MAC_Check* bit_MC;
-    Sub_Data_Files<BitShare>* bit_DataF;
     typename BitShare::Protocol* bit_protocol;
 
 public:

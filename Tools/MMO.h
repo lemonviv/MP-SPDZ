@@ -12,7 +12,12 @@
 // Matyas-Meyer-Oseas hashing
 class MMO
 {
-    static const int N_KEYS = 2;
+#ifdef GFP_MOD_SZ
+    static const int N_KEYS = GFP_MOD_SZ > 8 ? GFP_MOD_SZ : 8;
+#else
+    static const int N_KEYS = 8;
+#endif
+
     octet IV[N_KEYS][176]  __attribute__((aligned (16)));
 
     template<int N>
@@ -37,8 +42,12 @@ public:
     void hashBlocks(void* output, const void* input);
     template <class T>
     void hashEightBlocks(T* output, const void* input);
+    template <class T, int N_BYTES>
+    void hashEightBlocks(T* output, const void* input);
     template <int X, int L>
     void hashEightBlocks(gfp_<X, L>* output, const void* input);
+    template <int X, int L>
+    void hashEightBlocks(gfpvar_<X, L>* output, const void* input);
     template <class T>
     void outputOneBlock(octet* output);
     Key hash(const Key& input);

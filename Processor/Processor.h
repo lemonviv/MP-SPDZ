@@ -6,7 +6,7 @@
  */
 
 #include "Math/Integer.h"
-#include "Exceptions/Exceptions.h"
+#include "Tools/Exceptions.h"
 #include "Networking/Player.h"
 #include "Data_Files.h"
 #include "Input.h"
@@ -70,6 +70,8 @@ public:
       int b);
   void conv2ds(const Instruction& instruction);
 
+  void input_personal(const vector<int>& args);
+
   CheckVector<T>& get_S()
   {
     return S;
@@ -100,18 +102,22 @@ public:
   int thread_num;
 
   PRNG secure_prng;
+  PRNG shared_prng;
 
   string private_input_filename;
+  string public_input_filename;
 
   ifstream private_input;
   ifstream public_input;
   ofstream public_output;
   ofstream private_output;
-  ofstream stdout_redirect_file;
+  ofstream binary_output;
 
   int sent, rounds;
 
   OnlineOptions opts;
+
+  SwitchableOutput out;
 
   ArithmeticProcessor() :
       ArithmeticProcessor(OnlineOptions::singleton, BaseMachine::thread_num)
@@ -125,6 +131,11 @@ public:
     return thread_num == 0 and opts.interactive;
   }
 
+  int get_thread_num()
+  {
+    return thread_num;
+  }
+
   const long& read_Ci(int i) const
     { return Ci[i]; }
   long& get_Ci_ref(int i)
@@ -133,15 +144,21 @@ public:
     { Ci[i]=x; }
   CheckVector<long>& get_Ci()
     { return Ci; }
+
+  void shuffle(const Instruction& instruction);
+  void bitdecint(const Instruction& instruction);
 };
 
 template<class sint, class sgf2n>
 class Processor : public ArithmeticProcessor
 {
-  int reg_max2, reg_maxi;
+  typedef typename sint::clear cint;
 
   // Data structure used for reading/writing data to/from a socket (i.e. an external party to SPDZ)
   octetStream socket_stream;
+
+  // avoid re-computation of expensive division
+  vector<cint> inverses2m;
 
   public:
   Data_Files<sint, sgf2n> DataF;
@@ -161,15 +178,8 @@ class Processor : public ArithmeticProcessor
   unsigned int PC;
   TempVars<sint, sgf2n> temp;
 
-  PRNG shared_prng;
-
   ExternalClients external_clients;
   Binary_File_IO binary_file_io;
-  
-  // avoid re-computation of expensive division
-  map<int, typename sint::clear> inverses2m;
-
-  SwitchableOutput out;
 
   void reset(const Program& program,int arg); // Reset the state of the processor
   string get_filename(const char* basename, bool use_number);
@@ -180,10 +190,6 @@ class Processor : public ArithmeticProcessor
           const Program& program);
   ~Processor();
 
-  int get_thread_num()
-    {
-      return thread_num;
-    }
     const typename sgf2n::clear& read_C2(int i) const
       { return Proc2.C[i]; }
     const sgf2n& read_S2(int i) const
@@ -210,6 +216,8 @@ class Processor : public ArithmeticProcessor
     void write_Sp(int i,const sint & x)
       { Procp.S[i]=x; }
 
+  void check();
+
   void dabit(const Instruction& instruction);
   void edabit(const Instruction& instruction, bool strict = false);
 
@@ -221,7 +229,7 @@ class Processor : public ArithmeticProcessor
   // Access to external client sockets for reading clear/shared data
   void read_socket_ints(int client_id, const vector<int>& registers);
   
-  void write_socket(const RegType reg_type, const SecrecyType secrecy_type, const bool send_macs,
+  void write_socket(const RegType reg_type,
                              int socket_id, int message_type, const vector<int>& registers);
 
   void read_socket_vector(int client_id, const vector<int>& registers);
@@ -231,6 +239,8 @@ class Processor : public ArithmeticProcessor
   void read_shares_from_file(int start_file_pos, int end_file_pos_register, const vector<int>& data_registers);
   void write_shares_to_file(const vector<int>& data_registers);
   
+  cint get_inverse2(unsigned m);
+
   // Print the processor state
   template<class T, class U>
   friend ostream& operator<<(ostream& s,const Processor<T, U>& P);

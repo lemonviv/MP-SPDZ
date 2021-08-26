@@ -1,6 +1,6 @@
 
 #include "sockets.h"
-#include "Exceptions/Exceptions.h"
+#include "Tools/Exceptions.h"
 #include "Tools/time-func.h"
 
 #include <iostream>
@@ -9,104 +9,22 @@ using namespace std;
 
 void error(const char *str)
 {
+  int old_errno = errno;
   char err[1000];
   gethostname(err,1000);
   strcat(err," : ");
   strcat(err,str);
-  perror(err);
-  throw bad_value();
-}
-
-void error(const char *str1,const char *str2)
-{
-  char err[1000];
-  gethostname(err,1000);
-  strcat(err," : ");
-  strcat(err,str1);
-  strcat(err,str2);
-  perror(err);
-  throw bad_value();
-}
-
-void set_up_server_socket(sockaddr_in& dest,int& consocket,int& main_socket,int Portnum)
-{
-
-  struct sockaddr_in serv; /* socket info about our server */
-  int socksize = sizeof(struct sockaddr_in);
-
-  memset(&dest, 0, sizeof(dest));    /* zero the struct before filling the fields */
-  memset(&serv, 0, sizeof(serv));    /* zero the struct before filling the fields */
-  serv.sin_family = AF_INET;         /* set the type of connection to TCP/IP */
-  serv.sin_addr.s_addr = INADDR_ANY; /* set our address to any interface */
-  serv.sin_port = htons(Portnum);    /* set the server port number */
-
-  main_socket = socket(AF_INET, SOCK_STREAM, 0);
-  if (main_socket<0) { error("set_up_socket:socket"); }
-
-  int one=1;
-  int fl=setsockopt(main_socket,SOL_SOCKET,SO_REUSEADDR,(char*)&one,sizeof(int));
-  if (fl<0) { error("set_up_socket:setsockopt"); }
-
-  /* disable Nagle's algorithm */
-  fl= setsockopt(main_socket, IPPROTO_TCP, TCP_NODELAY, (char*)&one,sizeof(int));
-  if (fl<0) { error("set_up_socket:setsockopt");  }
-
-  octet my_name[512];
-  memset(my_name,0,512*sizeof(octet));
-  gethostname((char*)my_name,512);
-
-  /* bind serv information to mysocket
-   *   - Just assume it will eventually wake up
-   */
-  fl=1;
-  while (fl!=0)
-    { fl=::bind(main_socket, (struct sockaddr *)&serv, sizeof(struct sockaddr));
-      if (fl != 0)
-        { cerr << "Binding to socket on " << my_name << ":" << Portnum << " failed, trying again in a second ..." << endl;
-          sleep(1);
-        }
-#ifdef DEBUG_NETWORKING
-      else
-        { cerr << "Bound on port " << Portnum << endl; }
-#endif
-    }
-  if (fl<0) { error("set_up_socket:bind");  }
-
-  /* start listening, allowing a queue of up to 1 pending connection */
-  fl=listen(main_socket, 1);
-  if (fl<0) { error("set_up_socket:listen");  }
-
-  consocket = accept(main_socket, (struct sockaddr *)&dest, (socklen_t*) &socksize);
-
-  if (consocket<0) { error("set_up_socket:accept"); }
-
-}
-
-void close_server_socket(int consocket,int main_socket)
-{
-  if (close(consocket)) { error("close(socket)"); }
-  if (close(main_socket)) { error("close(main_socket"); };
+  throw runtime_error(string() + err + " : " + strerror(old_errno));
 }
 
 void set_up_client_socket(int& mysocket,const char* hostname,int Portnum)
 {
-   mysocket = socket(AF_INET, SOCK_STREAM, 0);
-   if (mysocket<0) { error("set_up_socket:socket");  }
-
-  /* disable Nagle's algorithm */
-  int one=1;
-  int fl= setsockopt(mysocket, IPPROTO_TCP, TCP_NODELAY, (char*)&one, sizeof(int));
-  if (fl<0) { error("set_up_socket:setsockopt");  }
-
-  fl=setsockopt(mysocket, SOL_SOCKET, SO_REUSEADDR, (char*)&one, sizeof(int));
-  if (fl<0) { error("set_up_socket:setsockopt"); }
-
    struct addrinfo hints, *ai=NULL,*rp;
    memset (&hints, 0, sizeof(hints));
    hints.ai_family = AF_INET;
    hints.ai_flags = AI_CANONNAME;
 
-   octet my_name[512];
+   char my_name[512];
    memset(my_name,0,512*sizeof(octet));
    gethostname((char*)my_name,512);
 
@@ -158,26 +76,48 @@ void set_up_client_socket(int& mysocket,const char* hostname,int Portnum)
 
    int attempts = 0;
    long wait = 1;
+   int fl;
+   int connect_errno;
    do
-   {  fl=1;
-      while (fl==1 || errno==EINPROGRESS)
-        {
-          fl=connect(mysocket, addr, len);
-          attempts++;
-          if (fl != 0)
-            usleep(wait *= 2);
-        }
+   {
+       mysocket = socket(AF_INET, SOCK_STREAM, 0);
+       if (mysocket < 0)
+         error("set_up_socket:socket");
+
+       fl = connect(mysocket, addr, len);
+       connect_errno = errno;
+       attempts++;
+       if (fl != 0)
+         {
+           close(mysocket);
+           usleep(wait *= 2);
+#ifdef DEBUG_NETWORKING
+           string msg = "Connecting to " + string(hostname) + ":" +
+               to_string(Portnum) + " failed";
+           errno = connect_errno;
+           perror(msg.c_str());
+#endif
+         }
+       errno = connect_errno;
    }
-   while (fl == -1 && (errno == ECONNREFUSED || errno == ETIMEDOUT)
-            && timer.elapsed() < 60);
+   while (fl == -1
+       && (errno == ECONNREFUSED || errno == ETIMEDOUT || errno == EINPROGRESS)
+       && timer.elapsed() < 60);
 
    if (fl < 0)
      {
-       cout << attempts << " attempts" << endl;
-       error("set_up_socket:connect:", hostname);
+       throw runtime_error(
+           string() + "cannot connect from " + my_name + " to " + hostname + ":"
+               + to_string(Portnum) + " after " + to_string(attempts)
+               + " attempts in one minute because " + strerror(connect_errno));
      }
 
    freeaddrinfo(ai);
+
+  /* disable Nagle's algorithm */
+  int one=1;
+  fl= setsockopt(mysocket, IPPROTO_TCP, TCP_NODELAY, (char*)&one, sizeof(int));
+  if (fl<0) { error("set_up_socket:setsockopt");  }
 
 #ifdef __APPLE__
   int flags = fcntl(mysocket, F_GETFL, 0);
@@ -196,49 +136,3 @@ void close_client_socket(int socket)
       error(tmp);
     }
 }
-
-unsigned long long sent_amount = 0, sent_counter = 0;
-
-
-template<>
-void send(int socket,int a)
-{
-  unsigned char msg[1];
-  msg[0]=a&255;
-  if (send(socket,msg,1,0)!=1)
-    { error("Send error - 2 ");  }
-}
-
-
-template<>
-void receive(int socket,int& a)
-{
-  unsigned char msg[1];
-  receive(socket, msg, 1);
-  a=msg[0];
-}
-
-
-
-void send_ack(int socket)
-{
-  char msg[]="OK";
-  if (send(socket,msg,2,0)!=2)
-        { error("Send Ack");  }
-}
-
-
-int get_ack(int socket)
-{
-  char msg[]="OK";
-  char msg_r[2];
-  int i=0,j;
-  while (2-i>0)
-    { j=recv(socket,msg_r+i,2-i,0);
-      i=i+j;
-    }
-
-  if (msg_r[0]!=msg[0] || msg_r[1]!=msg[1]) { return 1; }
-  return 0;
-}
-

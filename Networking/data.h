@@ -3,8 +3,9 @@
 
 #include <string.h>
 
-#include "Exceptions/Exceptions.h"
+#include "Tools/Exceptions.h"
 #include "Tools/avx_memcpy.h"
+#include "Tools/int.h"
 
 #ifdef __APPLE__
 # include <libkern/OSByteOrder.h>
@@ -12,21 +13,22 @@
 #define le64toh(x) OSSwapLittleToHostInt64(x)
 #endif
 
-
-typedef unsigned char octet;
-
-// Assumes word is a 64 bit value
-#ifdef WIN32
-  typedef unsigned __int64 word;
-#else
-  typedef unsigned long word;
+#ifdef __linux__
+#include <endian.h>
 #endif
 
-#define BROADCAST 0
-#define ROUTE     1
-#define TERMINATE 2
-#define GO        3
 
+inline void short_memcpy(void* out, void* in, size_t n_bytes)
+{
+    switch (n_bytes)
+    {
+#define X(N) case N: avx_memcpy<N>(out, in); break;
+    X(1) X(2) X(3) X(4) X(5) X(6) X(7) X(8)
+#undef X
+    default:
+        throw invalid_length("length outside range");
+    }
+}
 
 inline void encode_length(octet *buff, size_t len, size_t n_bytes)
 {
@@ -41,7 +43,7 @@ inline void encode_length(octet *buff, size_t len, size_t n_bytes)
     }
     // use little-endian for optimization
     uint64_t tmp = htole64(len);
-    avx_memcpy(buff, (void*)&tmp, n_bytes);
+    short_memcpy(buff, (void*)&tmp, n_bytes);
 }
 
 inline size_t decode_length(octet *buff, size_t n_bytes)
@@ -49,7 +51,7 @@ inline size_t decode_length(octet *buff, size_t n_bytes)
     if (n_bytes > 8)
         throw invalid_length("length field cannot be more than 64 bits");
     uint64_t tmp = 0;
-    avx_memcpy((void*)&tmp, buff, n_bytes);
+    short_memcpy((void*)&tmp, buff, n_bytes);
     return le64toh(tmp);
 }
 

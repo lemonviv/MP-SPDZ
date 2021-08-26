@@ -40,6 +40,7 @@ MalRepRingPrepWithBits<T>::MalRepRingPrepWithBits(SubProcessor<T>* proc,
         DataPositions& usage) :
         BufferPrep<T>(usage), BitPrep<T>(proc, usage),
         RingPrep<T>(proc, usage),
+        MaliciousDabitOnlyPrep<T>(proc, usage),
         MaliciousRingPrep<T>(proc, usage), MalRepRingPrep<T>(proc, usage),
         RingOnlyBitsFromSquaresPrep<T>(proc, usage),
         SimplerMalRepRingPrep<T>(proc, usage)
@@ -99,7 +100,7 @@ void shuffle_triple_generation(vector<array<T, 3>>& triples, Player& P,
         typename T::MAC_Check& MC, int n_bits = -1, ThreadQueues* queues = 0)
 {
     RunningTimer timer;
-    ShuffleSacrifice<T> sacrifice;
+    TripleShuffleSacrifice<T> sacrifice;
     vector<array<T, 3>> check_triples;
     int buffer_size = sacrifice.minimum_n_inputs(OnlineOptions::singleton.batch_size);
 
@@ -120,12 +121,10 @@ void shuffle_triple_generation(vector<array<T, 3>>& triples, Player& P,
 #endif
 }
 
-template<class T>
 template<class U>
-void ShuffleSacrifice<T>::shuffle(vector<U>& check_triples, Player& P)
+void ShuffleSacrifice::shuffle(vector<U>& check_triples, Player& P)
 {
     int buffer_size = check_triples.size();
-    assert(buffer_size >= minimum_n_inputs());
 
     // shuffle
     GlobalPRNG G(P);
@@ -138,12 +137,23 @@ void ShuffleSacrifice<T>::shuffle(vector<U>& check_triples, Player& P)
 }
 
 template<class T>
-void ShuffleSacrifice<T>::triple_sacrifice(vector<array<T, 3>>& triples,
+TripleShuffleSacrifice<T>::TripleShuffleSacrifice()
+{
+}
+
+template<class T>
+TripleShuffleSacrifice<T>::TripleShuffleSacrifice(int B, int C) :
+        ShuffleSacrifice(B, C)
+{
+}
+
+template<class T>
+void TripleShuffleSacrifice<T>::triple_sacrifice(vector<array<T, 3>>& triples,
         vector<array<T, 3>>& check_triples, Player& P,
         typename T::MAC_Check& MC, ThreadQueues* queues)
 {
     int buffer_size = check_triples.size();
-    int N = (buffer_size - C) / B;
+    size_t N = (buffer_size - C) / B;
 
     shuffle(check_triples, P);
 
@@ -161,7 +171,9 @@ void ShuffleSacrifice<T>::triple_sacrifice(vector<array<T, 3>>& triples,
         if (typename T::clear(opened[3 * i] * opened[3 * i + 1]) != opened[3 * i + 2])
             throw Offline_Check_Error("shuffle opening");
 
-    triples.resize(N);
+    // triples might be same as check_triples
+    if (triples.size() < N)
+        triples.resize(N);
 
     if (queues)
     {
@@ -172,10 +184,12 @@ void ShuffleSacrifice<T>::triple_sacrifice(vector<array<T, 3>>& triples,
     }
     else
         triple_sacrifice(triples, check_triples, P, MC, 0, N);
+
+    triples.resize(N);
 }
 
 template<class T>
-void ShuffleSacrifice<T>::triple_sacrifice(vector<array<T, 3>>& triples,
+void TripleShuffleSacrifice<T>::triple_sacrifice(vector<array<T, 3>>& triples,
         vector<array<T, 3>>& check_triples, Player& P,
         typename T::MAC_Check& MC, int begin, int end)
 {
@@ -188,6 +202,7 @@ void ShuffleSacrifice<T>::triple_sacrifice(vector<array<T, 3>>& triples,
     int N = buffer_size / B;
     int size = end - begin;
     masked.reserve(2 * size);
+    assert(size_t(end * B) <= check_triples.size());
     for (int i = begin; i < end; i++)
     {
         T& a = check_triples[i][0];

@@ -20,7 +20,8 @@
 #include "Math/Z2k.hpp"
 
 template<class T>
-ProtocolBase<T>::ProtocolBase() : counter(0)
+ProtocolBase<T>::ProtocolBase() :
+        trunc_pr_counter(0), rounds(0), trunc_rounds(0), counter(0)
 {
 }
 
@@ -66,8 +67,10 @@ template<class T>
 ProtocolBase<T>::~ProtocolBase()
 {
 #ifdef VERBOSE_COUNT
-    if (counter)
-        cerr << "Number of " << T::type_string() << " multiplications: " << counter << endl;
+    if (counter or rounds)
+        cerr << "Number of " << T::type_string() << " multiplications: " << counter << " in " << rounds << " rounds" << endl;
+    if (trunc_pr_counter or trunc_rounds)
+        cerr << "Number of probabilistic truncations: " << trunc_pr_counter << " in " << trunc_rounds << " rounds" << endl;
 #endif
 }
 
@@ -114,6 +117,12 @@ T ProtocolBase<T>::mul(const T& x, const T& y)
 }
 
 template<class T>
+void ProtocolBase<T>::finalize_mult(T& res, int n)
+{
+    res = finalize_mul(n);
+}
+
+template<class T>
 T ProtocolBase<T>::finalize_dotprod(int length)
 {
     counter += length;
@@ -127,7 +136,10 @@ template<class T>
 T ProtocolBase<T>::get_random()
 {
     if (random.empty())
+    {
         buffer_random();
+        assert(not random.empty());
+    }
 
     auto res = random.back();
     random.pop_back();
@@ -151,7 +163,6 @@ void Replicated<T>::init_mul(Preprocessing<T>& prep, typename T::MAC_Check& MC)
 template<class T>
 void Replicated<T>::init_mul()
 {
-    os.resize(2);
     for (auto& o : os)
         o.reset_write_head();
     add_shares.clear();
@@ -184,12 +195,14 @@ void Replicated<T>::exchange()
 {
     if (os[0].get_length() > 0)
         P.pass_around(os[0], os[1], 1);
+    this->rounds++;
 }
 
 template<class T>
 void Replicated<T>::start_exchange()
 {
     P.send_relative(1, os[0]);
+    this->rounds++;
 }
 
 template<class T>
@@ -299,12 +312,12 @@ void trunc_pr(const vector<int>& regs, int size,
             }
         }
         for (int i = 0; i < 2; i++)
-            proc.P.send_to(i, os[i], true);
+            proc.P.send_to(i, os[i]);
     }
     else
     {
         octetStream os;
-        proc.P.receive_player(2, os, true);
+        proc.P.receive_player(2, os);
         OffsetPlayer player(proc.P, 1 - 2 * proc.P.my_num());
         typedef SemiShare<value_type> semi_type;
         vector<SemiShare<value_type>> to_open;
@@ -372,9 +385,11 @@ void trunc_pr(const vector<int>& regs, int size, SubProcessor<T>& proc)
 }
 
 template<class T>
+template<class U>
 void Replicated<T>::trunc_pr(const vector<int>& regs, int size,
-        SubProcessor<T>& proc)
+        U& proc)
 {
+    this->trunc_rounds++;
     ::trunc_pr(regs, size, proc);
 }
 

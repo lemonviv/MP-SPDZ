@@ -7,11 +7,10 @@
 #define PROTOCOLS_REP4SHARE_H_
 
 #include "Rep3Share.h"
-#include "Processor/NoLivePrep.h"
 
 template<class T> class Rep4MC;
 template<class T> class Rep4;
-template<class T> class Rep4Prep;
+template<class T> class Rep4RingPrep;
 template<class T> class Rep4Input;
 
 namespace GC
@@ -33,7 +32,7 @@ public:
     typedef MAC_Check Direct_MC;
     typedef Rep4Input<This> Input;
     typedef ::PrivateOutput<This> PrivateOutput;
-    typedef Rep4Prep<This> LivePrep;
+    typedef Rep4RingPrep<This> LivePrep;
     typedef LivePrep SquarePrep;
 
     typedef GC::Rep4Secret bit_type;

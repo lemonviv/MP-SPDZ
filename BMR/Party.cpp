@@ -31,7 +31,6 @@
 #include "GC/Thread.hpp"
 #include "GC/ThreadMaster.hpp"
 #include "GC/Program.hpp"
-#include "GC/Instruction.hpp"
 #include "Processor/Instruction.hpp"
 #include "Protocols/Share.hpp"
 
@@ -372,7 +371,7 @@ void FakeProgramParty::receive_spdz_wires(ReceivedMsg& msg)
 		spdz_mac_key.unpack(spdz_wires[op].back());
 		if (!MC)
 		{
-			MC = new Passing_MAC_Check<Share<gf2n_long>>(spdz_mac_key);
+			MC = new MAC_Check_<Share<gf2n_long>>(spdz_mac_key);
 			cout << "MAC key: " << hex << spdz_mac_key << endl;
 			mac_key = spdz_mac_key;
 		}

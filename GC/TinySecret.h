@@ -21,6 +21,9 @@ namespace GC
 
 template<class T> class TinyOnlyPrep;
 template<class T> class TinyMC;
+template<class T> class VectorProtocol;
+template<class T> class VectorInput;
+template<class T> class CcdPrep;
 
 template<class T>
 class VectorSecret : public Secret<T>
@@ -50,19 +53,15 @@ public:
 
     static const int default_length = 64;
 
-    static DataFieldType field_type()
-    {
-        return BitVec::field_type();
-    }
-
     static int size()
     {
         return part_type::size() * default_length;
     }
 
-    template<class U>
-    static void generate_mac_key(mac_key_type&, const U&)
+    static void read_or_generate_mac_key(string directory, const Player& P,
+            mac_key_type& key)
     {
+        T::read_or_generate_mac_key(directory, P, key);
     }
 
     template<class U>
@@ -127,18 +126,20 @@ public:
         return *this * BitVec(other);
     }
 
-    This extend_bit() const
+    void extend_bit(This& res, int n_bits) const
     {
-        This res;
-        res.get_regs().resize(BitVec::N_BITS, this->get_reg(0));
-        return res;
+        auto& regs = res.get_regs();
+        regs.assign(n_bits, this->get_reg(0));
     }
 
-    This mask(int n_bits) const
+    void mask(This& res, int n_bits) const
     {
-        This res = *this;
-        res.get_regs().resize(n_bits);
-        return res;
+        if (this != &res)
+            res.get_regs().assign(this->get_regs().begin(),
+                    this->get_regs().begin()
+                            + max(size_t(n_bits), this->get_regs().size()));
+
+        res.resize_regs(n_bits);
     }
 
     T get_bit(int i) const
@@ -165,9 +166,15 @@ public:
     }
 
     template <class U>
+    void other_input(U& inputter, int from, int n_bits)
+    {
+        inputter.add_other(from, n_bits);
+    }
+
+    template <class U>
     void finalize_input(U& inputter, int from, int n_bits)
     {
-        *this = inputter.finalize(from, n_bits).mask(n_bits);
+        inputter.finalize(from, n_bits).mask(*this, n_bits);
     }
 };
 
@@ -180,9 +187,9 @@ class TinySecret : public VectorSecret<TinyShare<S>>
 public:
     typedef TinyMC<This> MC;
     typedef MC MAC_Check;
-    typedef Beaver<This> Protocol;
-    typedef ::Input<This> Input;
-    typedef TinyOnlyPrep<This> LivePrep;
+    typedef VectorProtocol<This> Protocol;
+    typedef VectorInput<This> Input;
+    typedef CcdPrep<This> LivePrep;
     typedef Memory<This> DynamicMemory;
 
     typedef OTTripleGenerator<This> TripleGenerator;
@@ -218,7 +225,7 @@ public:
     TinySecret()
     {
     }
-    TinySecret(const super& other) :
+    TinySecret(const typename super::super& other) :
             super(other)
     {
     }

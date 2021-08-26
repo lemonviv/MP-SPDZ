@@ -14,6 +14,9 @@
 #include "Protocols/fake-stuff.h"
 
 #include "Protocols/fake-stuff.hpp"
+#include "Protocols/mac_key.hpp"
+#include "Protocols/Share.hpp"
+#include "Math/modp.hpp"
 
 void* run_generator(void* generator)
 {
@@ -237,6 +240,13 @@ void MultiplicativeMachine::fake_keys(int slack)
     part_setup.unpack(os);
     part_setup.check(drown_sec);
 
+    part_setup.alphai = read_or_generate_mac_key<Share<typename FD::T>>(P);
+    Plaintext_<FD> m(part_setup.FieldD);
+    m.assign_constant(part_setup.alphai);
+    vector<Ciphertext> C({part_setup.pk.encrypt(m)});
+    TreeSum<Ciphertext>().run(C, P);
+    part_setup.calpha = C[0];
+
     if (output)
         part_setup.output(N);
 }
@@ -288,12 +298,6 @@ void MachineBase::run()
     cout << "Produced " << total << " " << item_type() << " in "
             << timer.elapsed() << " seconds" << endl;
     cout << "CPU time: " << cpu_timer.elapsed() << endl;
-
-    extern unsigned long long sent_amount, sent_counter;
-    cout << "Data sent = " << sent_amount << " bytes in " << sent_counter
-            << " calls, ";
-    cout << sent_amount / sent_counter / N.num_players() << " bytes per call"
-            << endl;
 
     cout << "Time: " << timer.elapsed() << endl;
     cout << "Throughput: " << total / timer.elapsed() << endl;

@@ -35,6 +35,7 @@ class Program
     { compute_constants(); }
 
   // Read in a program
+  void parse(string filename);
   void parse(istream& s);
 
   DataPositions get_offline_data_used() const { return offline_data_used; }
@@ -42,7 +43,7 @@ class Program
 
   bool usage_unknown() const { return unknown_usage; }
 
-  int num_reg(RegType reg_type) const
+  unsigned num_reg(RegType reg_type) const
     { return max_reg[reg_type]; }
 
   unsigned direct_mem(RegType reg_type) const

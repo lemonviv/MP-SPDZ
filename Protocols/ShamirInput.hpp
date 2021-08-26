@@ -11,9 +11,6 @@
 
 #include "Protocols/ReplicatedInput.hpp"
 
-template<class T>
-vector<vector<typename T::open_type>> ShamirInput<T>::vandermonde;
-
 template<class U>
 void IndividualInput<U>::reset(int player)
 {
@@ -21,17 +18,15 @@ void IndividualInput<U>::reset(int player)
     {
         this->shares.clear();
         this->i_share = 0;
-        os.clear();
-        os.resize(P.num_players());
+        os.reset(P);
     }
 }
 
 template<class T>
-const vector<vector<typename T::open_type>>& ShamirInput<T>::get_vandermonde(
+vector<vector<typename T::open_type>> ShamirInput<T>::get_vandermonde(
         size_t t, size_t n)
 {
-    if (vandermonde.size() < n)
-        vandermonde.resize(n);
+    vector<vector<typename T::open_type>> vandermonde(n);
 
     for (int i = 0; i < int(n); i++)
         if (vandermonde[i].size() < t)
@@ -54,8 +49,10 @@ void ShamirInput<T>::add_mine(const typename T::open_type& input, int n_bits)
     (void) n_bits;
     auto& P = this->P;
     int n = P.num_players();
-    int t = ShamirMachine::s().threshold;
-    const auto& vandermonde = get_vandermonde(t, n);
+    int t = threshold;
+
+    if (vandermonde.empty())
+        vandermonde = get_vandermonde(t, n);
 
     randomness.resize(t);
     for (auto& x : randomness)
@@ -74,7 +71,7 @@ void ShamirInput<T>::add_mine(const typename T::open_type& input, int n_bits)
 }
 
 template<class U>
-void IndividualInput<U>::add_other(int player)
+void IndividualInput<U>::add_other(int player, int)
 {
     (void) player;
 }
@@ -84,7 +81,13 @@ void IndividualInput<U>::send_mine()
 {
     for (int i = 0; i < P.num_players(); i++)
         if (i != P.my_num())
-            P.send_to(i, os[i], true);
+            P.send_to(i, os[i]);
+}
+
+template<class T>
+void IndividualInput<T>::exchange()
+{
+    P.send_receive_all(os, InputBase<T>::os);
 }
 
 template<class T>

@@ -14,14 +14,13 @@
 #include "GC/MaliciousCcdSecret.h"
 #include "GC/VectorInput.h"
 
-#include "Protocols/ReplicatedMachine.hpp"
+#include "Processor/FieldMachine.hpp"
 
 #include "Processor/Data_Files.hpp"
 #include "Processor/Instruction.hpp"
 #include "Processor/Machine.hpp"
 #include "Protocols/ShamirInput.hpp"
 #include "Protocols/Shamir.hpp"
-#include "Protocols/MaliciousRepPrep.hpp"
 #include "Protocols/ShamirMC.hpp"
 #include "Protocols/MaliciousShamirMC.hpp"
 #include "Protocols/MAC_Check_Base.hpp"
@@ -31,6 +30,7 @@
 #include "GC/ShareSecret.hpp"
 #include "GC/VectorProtocol.hpp"
 #include "GC/Secret.hpp"
+#include "GC/CcdPrep.hpp"
 #include "Math/gfp.hpp"
 
 ShamirOptions ShamirOptions::singleton;
@@ -40,8 +40,8 @@ ShamirOptions& ShamirOptions::s()
     return singleton;
 }
 
-ShamirOptions::ShamirOptions() :
-        nparties(3), threshold(1)
+ShamirOptions::ShamirOptions(int nparties, int threshold) :
+        nparties(nparties), threshold(threshold)
 {
 }
 
@@ -67,6 +67,12 @@ ShamirOptions::ShamirOptions(ez::ezOptionParser& opt, int argc, const char** arg
     );
     opt.parse(argc, argv);
     opt.get("-N")->getInt(nparties);
+    set_threshold(opt);
+    opt.resetArgs();
+}
+
+void ShamirOptions::set_threshold(ez::ezOptionParser& opt)
+{
     if (opt.isSet("-T"))
         opt.get("-T")->getInt(threshold);
     else
@@ -81,7 +87,6 @@ ShamirOptions::ShamirOptions(ez::ezOptionParser& opt, int argc, const char** arg
         cerr << "Threshold has to be positive" << endl;
         exit(1);
     }
-    opt.resetArgs();
 }
 
 template<template<class U> class T>
@@ -91,5 +96,5 @@ ShamirMachineSpec<T>::ShamirMachineSpec(int argc, const char** argv)
     ez::ezOptionParser opt;
     opts = {opt, argc, argv};
     T<gfp>::bit_type::part_type::open_type::init_field();
-    ReplicatedMachine<T<gfp>, T<gf2n>>(argc, argv, "shamir", opt, opts.nparties);
+    HonestMajorityFieldMachine<T>(argc, argv, opt, opts.nparties);
 }

@@ -7,6 +7,7 @@
 #include "FHEOffline/DataSetup.h"
 
 #include "ReplicatedPrep.hpp"
+#include "FHEOffline/DataSetup.hpp"
 
 template<class T>
 PartSetup<typename SohoPrep<T>::FD>* SohoPrep<T>::setup = 0;
@@ -21,7 +22,8 @@ void SohoPrep<T>::basic_setup(Player& P)
     setup = new PartSetup<FD>;
     MachineBase machine;
     setup->secure_init(P, machine, T::clear::length(), 0);
-    setup->covert_secrets_generation(P, machine, 1);
+    read_or_generate_secrets(*setup, P, machine, 1, true_type());
+    T::clear::template init<typename FD::T>();
 }
 
 template<class T>
@@ -110,14 +112,7 @@ void SohoPrep<T>::buffer_squares()
 }
 
 template<class T>
-void SohoPrep<T>::buffer_inverses()
-{
-    assert(this->proc != 0);
-    ::buffer_inverses(this->inverses, *this, this->proc->MC, this->proc->P);
-}
-
-template<>
-void SohoPrep<SohoShare<gfp>>::buffer_bits()
+void SohoPrep<T>::buffer_bits()
 {
     buffer_bits_from_squares(*this);
 }

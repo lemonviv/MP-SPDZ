@@ -13,8 +13,8 @@
 class PairwiseMachine;
 class MachineBase;
 
-template <class T>
-void secure_init(T& setup, Player& P, MachineBase& machine,
+template <class T, class U>
+void secure_init(T& setup, Player& P, U& machine,
         int plaintext_length, int sec);
 
 template <class FD>
@@ -27,11 +27,18 @@ public:
     FD FieldD;
     typename FD::T alphai;
     Plaintext_<FD> alpha;
-    string dirname;
 
     static string name()
     {
         return "PairwiseParams-" + FD::T::type_string();
+    }
+
+    static string protocol_name(bool covert)
+    {
+        if (covert)
+            return "CowGear";
+        else
+            return "LowGear";
     }
 
     PairwiseSetup() : params(0), alpha(FieldD) {}
@@ -40,9 +47,14 @@ public:
 
     void secure_init(Player& P, PairwiseMachine& machine, int plaintext_length, int sec);
     void generate(Player& P, MachineBase& machine, int plaintext_length, int sec);
-    void check(Player& P, MachineBase& machine);
+    void check(Player& P, PairwiseMachine& machine);
     void covert_key_generation(Player& P, PairwiseMachine& machine, int num_runs);
     void covert_mac_generation(Player& P, PairwiseMachine& machine, int num_runs);
+
+    void key_and_mac_generation(Player& P, PairwiseMachine& machine,
+            int num_runs, false_type);
+    void key_and_mac_generation(Player& P, PairwiseMachine& machine,
+            int num_runs, true_type);
 
     void pack(octetStream& os) const;
     void unpack(octetStream& os);

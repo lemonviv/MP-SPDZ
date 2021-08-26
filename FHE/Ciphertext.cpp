@@ -1,7 +1,9 @@
 #include "Ciphertext.h"
 #include "PPData.h"
 #include "P2Data.h"
-#include "Exceptions/Exceptions.h"
+#include "Tools/Exceptions.h"
+
+#include "Math/modp.hpp"
 
 Ciphertext::Ciphertext(const FHE_PK& pk) : Ciphertext(pk.get_params())
 {

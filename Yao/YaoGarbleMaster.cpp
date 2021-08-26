@@ -6,7 +6,6 @@
 #include "YaoGarbleMaster.h"
 #include "YaoGarbler.h"
 
-#include "GC/Instruction.hpp"
 #include "GC/Machine.hpp"
 #include "GC/Program.hpp"
 #include "GC/Processor.hpp"
@@ -14,6 +13,7 @@
 #include "GC/Thread.hpp"
 #include "GC/ThreadMaster.hpp"
 #include "Processor/Instruction.hpp"
+#include "YaoWire.hpp"
 
 YaoGarbleMaster::YaoGarbleMaster(bool continuous, OnlineOptions& opts, int threshold) :
         super(opts), continuous(continuous), threshold(threshold)

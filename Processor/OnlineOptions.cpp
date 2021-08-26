@@ -4,7 +4,11 @@
  */
 
 #include "OnlineOptions.h"
+#include "BaseMachine.h"
 #include "Math/gfp.h"
+#include "Math/gfpvar.h"
+
+#include "Math/gfp.hpp"
 
 using namespace std;
 
@@ -13,13 +17,13 @@ OnlineOptions OnlineOptions::singleton;
 OnlineOptions::OnlineOptions() : playerno(-1)
 {
     interactive = false;
-    lgp = gfp::MAX_N_BITS;
+    lgp = gfp0::MAX_N_BITS;
     live_prep = true;
     batch_size = 10000;
     memtype = "empty";
     bits_from_squares = false;
     direct = false;
-    bucket_size = 3;
+    bucket_size = 4;
     cmd_private_input_file = "Player-Data/Input";
     cmd_private_output_file = "";
 }
@@ -153,16 +157,17 @@ OnlineOptions::OnlineOptions(ez::ezOptionParser& opt, int argc,
             0, // Required?
             0, // Number of args expected.
             0, // Delimiter if expecting multiple args.
-            "Direct communication instead of star-shaped", // Help description.
+            "Direct communication instead of star-shaped "
+            "(only for dishonest-majority protocols)", // Help description.
             "-d", // Flag token.
             "--direct" // Flag token.
     );
     opt.add(
-            "3", // Default.
+            "4", // Default.
             0, // Required?
             1, // Number of args expected.
             0, // Delimiter if expecting multiple args.
-            "Batch size for sacrifice (3-5, default: 3)", // Help description.
+            "Batch size for sacrifice (3-5, default: 4)", // Help description.
             "-B", // Flag token.
             "--bucket-size" // Flag token.
     );
@@ -246,4 +251,44 @@ void OnlineOptions::finalize(ez::ezOptionParser& opt, int argc,
         cout << usage;
         exit(1);
     }
+
+    if (opt.get("-lgp"))
+    {
+        bigint schedule_prime = BaseMachine::prime_from_schedule(progname);
+        if (prime != 0 and prime != schedule_prime and schedule_prime != 0)
+        {
+            cerr << "Different prime for compilation and computation." << endl;
+            cerr << "Run with '--prime " << schedule_prime
+                    << "' or compile with '--prime " << prime << "'." << endl;
+            exit(1);
+        }
+        if (schedule_prime != 0)
+            prime = schedule_prime;
+    }
+
+    if (opt.get("-lgp") and not opt.isSet("-lgp"))
+    {
+        int prog_lgp = BaseMachine::prime_length_from_schedule(progname);
+        prog_lgp = DIV_CEIL(prog_lgp, 64) * 64;
+        if (prog_lgp != 0)
+            lgp = prog_lgp;
+
+#ifndef FEWER_PRIMES
+        if (prime_limbs() > 4)
+#endif
+            lgp = max(lgp, gfp0::MAX_N_BITS);
+    }
+}
+
+int OnlineOptions::prime_length()
+{
+    if (prime == 0)
+        return lgp;
+    else
+        return prime.numBits();
+}
+
+int OnlineOptions::prime_limbs()
+{
+    return DIV_CEIL(prime_length(), 64);
 }

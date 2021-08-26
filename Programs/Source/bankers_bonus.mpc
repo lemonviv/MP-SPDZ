@@ -14,7 +14,6 @@
 """
 
 from Compiler.types import sint, regint, Array, MemValue
-from Compiler.instructions import listen, acceptclientconnection
 from Compiler.library import print_ln, do_while, for_range
 from Compiler.util import if_else
 
@@ -26,24 +25,26 @@ if len(program.args) > 1:
     n_rounds = int(program.args[1])
 
 def accept_client():
-    client_socket_id = regint()
-    acceptclientconnection(client_socket_id, PORTNUM)
+    client_socket_id = accept_client_connection(PORTNUM)
     last = regint.read_from_socket(client_socket_id)
     return client_socket_id, last
 
-def client_input(client_socket_id):
+def close_connections(number_clients):
+    @for_range(number_clients)
+    def _(i):
+        closeclientconnection(i)
+
+def client_input(t, client_socket_id):
     """
     Send share of random value, receive input and deduce share.
     """
     
-    client_inputs = sint.receive_from_client(1, client_socket_id)
-
-    return client_inputs[0]
+    return t.receive_from_client(1, client_socket_id)[0]
 
 
 def determine_winner(number_clients, client_values, client_ids):
     """Work out and return client_id which corresponds to max client_value"""
-    max_value = Array(1, sint)
+    max_value = Array(1, client_values.value_type)
     max_value[0] = client_values[0]
     win_client_id = Array(1, sint)
     win_client_id[0] = client_ids[0]
@@ -57,6 +58,7 @@ def determine_winner(number_clients, client_values, client_ids):
         # Keep current winning client id
         win_client_id[0] = if_else(is_new_max, client_ids[i+1], win_client_id[0])
 
+    print_ln('maximum: %s', max_value[0].reveal())
     return win_client_id[0]
 
 
@@ -77,7 +79,7 @@ def main():
     """Listen in while loop for players to join a game.
     Once maxiumum reached or have notified that round finished, run comparison and return result."""
     # Start listening for client socket connections
-    listen(PORTNUM)
+    listen_for_clients(PORTNUM)
     print_ln('Listening for client connections on base port %s', PORTNUM)
 
     def game_loop(_=None):
@@ -87,8 +89,6 @@ def main():
         client_sockets = Array(MAX_NUM_CLIENTS, regint)
         # Number of clients
         number_clients = MemValue(regint(0))
-        # Clients secret input.
-        client_values = Array(MAX_NUM_CLIENTS, sint)
         # Client ids to identity client
         client_ids = Array(MAX_NUM_CLIENTS, sint)
         # Keep track of received inputs
@@ -112,15 +112,26 @@ def main():
 
             return (sum(seen) < number_clients) + (number_clients == 0)
 
-        @for_range(number_clients)
-        def _(client_id):
-            client_values[client_id] = client_input(client_id)
+        def type_run(t):
+            # Clients secret input.
+            client_values = t.Array(MAX_NUM_CLIENTS)
 
-        winning_client_id = determine_winner(number_clients, client_values, client_ids)
+            @for_range(number_clients)
+            def _(client_id):
+                client_values[client_id] = client_input(t, client_id)
 
-        # print_ln('Found winner, index: %s.', winning_client_id.reveal())
+            winning_client_id = determine_winner(number_clients, client_values,
+                                                 client_ids)
 
-        write_winner_to_clients(client_sockets, number_clients, winning_client_id)
+            # print_ln('Found winner, index: %s.', winning_client_id.reveal())
+
+            write_winner_to_clients(client_sockets, number_clients,
+                                    winning_client_id)
+
+        type_run(sint)
+        type_run(sfix)
+
+        close_connections(number_clients)
 
         return True
 

@@ -4,13 +4,12 @@
  */
 
 #include "GC/TinierSecret.h"
-#include "GC/TinierPrep.h"
 #include "GC/ShareParty.h"
 #include "GC/TinyMC.h"
+#include "GC/VectorInput.h"
 
 #include "GC/ShareParty.hpp"
 #include "GC/ShareSecret.hpp"
-#include "GC/Instruction.hpp"
 #include "GC/Machine.hpp"
 #include "GC/Processor.hpp"
 #include "GC/Program.hpp"
@@ -18,6 +17,8 @@
 #include "GC/ThreadMaster.hpp"
 #include "GC/Secret.hpp"
 #include "GC/TinyPrep.hpp"
+#include "GC/TinierSharePrep.hpp"
+#include "GC/CcdPrep.hpp"
 
 #include "Processor/Instruction.hpp"
 #include "Protocols/MAC_Check.hpp"
@@ -28,5 +29,5 @@
 int main(int argc, const char** argv)
 {
     gf2n_short::init_field(40);
-    GC::ShareParty<GC::TinierSecret<gf2n_short>>(argc, argv, 1000);
+    GC::simple_binary_main<GC::TinierSecret<gf2n_short>>(argc, argv, 1000);
 }

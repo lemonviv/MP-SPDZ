@@ -10,8 +10,8 @@
 bool BufferBase::rewind = false;
 
 
-void BufferBase::setup(ifstream* f, int length, string filename,
-        const char* type, const char* field)
+void BufferBase::setup(ifstream* f, int length, const string& filename,
+        const char* type, const string& field)
 {
     file = f;
     tuple_length = length;
@@ -54,12 +54,18 @@ void BufferBase::try_rewind()
 
 void BufferBase::prune()
 {
-    if (file and file->tellg() != 0)
+    if (file and not file->good())
+        purge();
+    else if (file and file->tellg() != 0)
     {
+#ifdef VERBOSE
         cerr << "Pruning " << filename << endl;
+#endif
         string tmp_name = filename + ".new";
         ofstream tmp(tmp_name.c_str());
         tmp << file->rdbuf();
+        if (tmp.fail())
+            throw runtime_error("problem writing to " + tmp_name);
         tmp.close();
         file->close();
         rename(tmp_name.c_str(), filename.c_str());
@@ -71,9 +77,17 @@ void BufferBase::purge()
 {
     if (file)
     {
+#ifdef VERBOSE
         cerr << "Removing " << filename << endl;
+#endif
         unlink(filename.c_str());
         file->close();
         file = 0;
     }
+}
+
+void BufferBase::check_tuple_length(int tuple_length)
+{
+    if (tuple_length != this->tuple_length)
+        throw Processor_Error("inconsistent tuple length");
 }

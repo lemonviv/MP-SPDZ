@@ -16,11 +16,12 @@ import os
 import sys
 sys.path.insert(0, os.path.abspath('..'))
 
+exec(compile(open('gen-instructions.py').read(), 'gen', 'exec'))
 
 # -- Project information -----------------------------------------------------
 
 project = u'MP-SPDZ'
-copyright = u'2020, Data61'
+copyright = u'2021, CSIRO\'s Data61'
 author = u'Marcel Keller'
 
 # The short X.Y version

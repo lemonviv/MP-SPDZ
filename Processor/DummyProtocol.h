@@ -89,7 +89,6 @@ public:
 
     void init_mul(SubProcessor<T>* = 0)
     {
-        throw not_implemented();
     }
     typename T::clear prepare_mul(const T&, const T&, int = 0)
     {
@@ -190,9 +189,9 @@ public:
     NotImplementedInput(const T&, const U&, const W&)
     {
     }
-    NotImplementedInput(Player& P)
+    template<class T>
+    NotImplementedInput(const T&)
     {
-        (void) P;
     }
     void start(int n, vector<int> regs)
     {
@@ -223,9 +222,6 @@ public:
     static void input_mixed(SubProcessor<V>, vector<int>, int, int)
     {
     }
-    static void raw_input(SubProcessor<V>, vector<int>, int)
-    {
-    }
     void reset_all(Player& P)
     {
         (void) P;
@@ -238,6 +234,11 @@ public:
         throw not_implemented();
     }
     void add_other(int)
+    {
+        throw not_implemented();
+    }
+    template<class U>
+    void add_from_all(U)
     {
         throw not_implemented();
     }

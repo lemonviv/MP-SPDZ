@@ -13,6 +13,7 @@ using namespace std;
 
 template<class sint, class sgf2n> class Machine;
 template<class sint, class sgf2n> class Processor;
+class ArithmeticProcessor;
 
 /* 
  * Opcode constants
@@ -22,6 +23,7 @@ template<class sint, class sgf2n> class Processor;
  */
 enum
 {
+    CISC = 0,
     // Load/store
     LDI = 0x1,
     LDSI = 0x2,
@@ -91,6 +93,7 @@ enum
     LEGENDREC = 0x38,
     DIGESTC = 0x39,
     INV2M = 0x3a,
+    FLOORDIVC = 0x3b,
     // Open
     OPEN = 0xA5,
     MULS = 0xA6,
@@ -100,6 +103,7 @@ enum
     MATMULS = 0xAA,
     MATMULSM = 0xAB,
     CONV2DS = 0xAC,
+    CHECK = 0xAF,
     // Data access
     TRIPLE = 0x50,
     BIT = 0x51,
@@ -112,6 +116,7 @@ enum
     EDABIT = 0x59,
     SEDABIT = 0x5A,
     RANDOMS = 0x5B,
+    RANDOMFULLS = 0x5D,
     // Input
     INPUT = 0x60,
     INPUTFIX = 0xF0,
@@ -119,6 +124,7 @@ enum
     INPUTMIXED = 0xF2,
     INPUTMIXEDREG = 0xF3,
     RAWINPUT = 0xF4,
+    INPUTPERSONAL = 0xF5,
     STARTINPUT = 0x61,
     STOPINPUT = 0x62,
     READSOCKETC = 0x63,
@@ -189,6 +195,8 @@ enum
     CONDPRINTSTR = 0xBF,
     PRINTFLOATPREC = 0xE0,
     CONDPRINTPLAIN = 0xE1,
+    INTOUTPUT = 0xE6,
+    FLOATOUTPUT = 0xE7,
 
     // GF(2^n) versions
     
@@ -285,7 +293,6 @@ enum
 
 // Register types
 enum RegType {
-  MODP,
   INT,
   SBIT,
   CBIT,
@@ -311,19 +318,6 @@ struct TempVars {
   sint Sansp;
   bigint aa,aa2;
   typename sint::open_type rrp, xip;
-  // assign without allocation
-  void assign_ansp(unsigned int n)
-  {
-    ansp = int(n);
-  }
-  void assign_ansp(int n)
-  {
-    ansp = n;
-  }
-  void assign_ansp(long n)
-  {
-    ansp = n;
-  }
 };
 
 
@@ -378,6 +372,20 @@ public:
   // and streams pointing to the triples etc
   template<class sint, class sgf2n>
   void execute(Processor<sint, sgf2n>& Proc) const;
+
+  template<class cgf2n>
+  void execute_clear_gf2n(vector<cgf2n>& registers, vector<cgf2n>& memory,
+      ArithmeticProcessor& Proc) const;
+
+  template<class cgf2n>
+  void gbitdec(vector<cgf2n>& registers) const;
+  template<class cgf2n>
+  void gbitcom(vector<cgf2n>& registers) const;
+
+  void execute_regint(ArithmeticProcessor& Proc, vector<Integer>& Mi) const;
+
+  void shuffle(ArithmeticProcessor& Proc) const;
+  void bitdecint(ArithmeticProcessor& Proc) const;
 };
 
 #endif

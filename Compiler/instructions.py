@@ -1,14 +1,19 @@
-""" This module is for classes of actual assembly instructions.
-
-All base classes, utility functions etc. should go in
-instructions_base.py instead. This is for two reasons:
-1) Easier generation of documentation
-2) Ensures that 'from instructions import *' will only import assembly
-instructions and nothing else.
-
-Note: every instruction should have a suitable docstring for auto-generation of
-documentation
 """
+This module contains all instruction types for arithmetic computation
+and general control of the virtual machine such as control flow.
+
+The parameter descriptions refer to the instruction arguments in the
+right order.
+"""
+
+# All base classes, utility functions etc. should go in
+# instructions_base.py instead. This is for two reasons:
+# 1) Easier generation of documentation
+# 2) Ensures that 'from instructions import *' will only import assembly
+# instructions and nothing else.
+#
+# Note: every instruction should have a suitable docstring for
+# auto-generation of documentation
 
 import itertools
 import operator
@@ -30,7 +35,11 @@ _python_input = input
 @base.gf2n
 @base.vectorize
 class ldi(base.Instruction):
-    r""" Assigns register $c_i$ the value $n$. """
+    """ Assign (constant) immediate value to clear register (vector).
+
+    :param: destination (cint)
+    :param: value (int)
+    """
     __slots__ = []
     code = base.opcodes['LDI']
     arg_format = ['cw','i']
@@ -38,7 +47,11 @@ class ldi(base.Instruction):
 @base.gf2n
 @base.vectorize
 class ldsi(base.Instruction):
-    r""" Assigns register $s_i$ a share of the value $n$. """
+    """ Assign (constant) immediate value to secret register (vector).
+
+    :param: destination (sint)
+    :param: value (int)
+    """
     __slots__ = []
     code = base.opcodes['LDSI']
     arg_format = ['sw','i']
@@ -46,7 +59,14 @@ class ldsi(base.Instruction):
 @base.gf2n
 @base.vectorize
 class ldmc(base.DirectMemoryInstruction, base.ReadMemoryInstruction):
-    r""" Assigns register $c_i$ the value in memory \verb+C[n]+. """
+    """ Assign clear memory value(s) to clear register (vector) by
+    immediate address. The vectorized version starts at the base
+    address and then iterates the memory address.
+
+    :param: destination (cint)
+    :param: memory address base (int)
+
+    """
     __slots__ = []
     code = base.opcodes['LDMC']
     arg_format = ['cw','int']
@@ -54,7 +74,14 @@ class ldmc(base.DirectMemoryInstruction, base.ReadMemoryInstruction):
 @base.gf2n
 @base.vectorize
 class ldms(base.DirectMemoryInstruction, base.ReadMemoryInstruction):
-    r""" Assigns register $s_i$ the value in memory \verb+S[n]+. """
+    """ Assign secret memory value(s) to secret register (vector) by
+    immediate address. The vectorized version starts at the base
+    address and then iterates the memory address.
+
+    :param: destination (sint)
+    :param: memory address base (int)
+
+    """
     __slots__ = []
     code = base.opcodes['LDMS']
     arg_format = ['sw','int']
@@ -62,7 +89,14 @@ class ldms(base.DirectMemoryInstruction, base.ReadMemoryInstruction):
 @base.gf2n
 @base.vectorize
 class stmc(base.DirectMemoryWriteInstruction):
-    r""" Sets \verb+C[n]+ to be the value $c_i$. """
+    """ Assign clear register (vector) to clear memory value(s) by
+    immediate address. The vectorized version starts at the base
+    address and then iterates the memory address.
+
+    :param: source (cint)
+    :param: memory address base (int)
+
+    """
     __slots__ = []
     code = base.opcodes['STMC']
     arg_format = ['c','int']
@@ -70,64 +104,126 @@ class stmc(base.DirectMemoryWriteInstruction):
 @base.gf2n
 @base.vectorize
 class stms(base.DirectMemoryWriteInstruction):
-    r""" Sets \verb+S[n]+ to be the value $s_i$. """
+    """ Assign secret register (vector) to secret memory value(s) by
+    immediate address. The vectorized version starts at the base
+    address and then iterates the memory address.
+
+    :param: source (sint)
+    :param: memory address base (int)
+
+    """
     __slots__ = []
     code = base.opcodes['STMS']
     arg_format = ['s','int']
 
 @base.vectorize
 class ldmint(base.DirectMemoryInstruction, base.ReadMemoryInstruction):
-    r""" Assigns register $ci_i$ the value in memory \verb+Ci[n]+. """
+    """ Assign clear integer memory value(s) to clear integer register
+    (vector) by immediate address. The vectorized version starts at
+    the base address and then iterates the memory address.
+
+    :param: destination (regint)
+    :param: memory address base (int)
+
+    """
     __slots__ = []
     code = base.opcodes['LDMINT']
     arg_format = ['ciw','int']
 
 @base.vectorize
 class stmint(base.DirectMemoryWriteInstruction):
-    r""" Sets \verb+Ci[n]+ to be the value $ci_i$. """
+    """ Assign clear integer register (vector) to clear integer memory
+    value(s) by immediate address. The vectorized version starts at
+    the base address and then iterates the memory address.
+
+    :param: source (regint)
+    :param: memory address base (int)
+
+    """
     __slots__ = []
     code = base.opcodes['STMINT']
     arg_format = ['ci','int']
 
-# must have seperate instructions because address is always modp
 @base.vectorize
 class ldmci(base.ReadMemoryInstruction, base.IndirectMemoryInstruction):
-    r""" Assigns register $c_i$ the value in memory \verb+C[cj]+. """
+    """ Assign clear memory value(s) to clear register (vector) by
+    register address. The vectorized version starts at the base
+    address and then iterates the memory address.
+
+    :param: destination (cint)
+    :param: memory address base (regint)
+
+    """
     code = base.opcodes['LDMCI']
     arg_format = ['cw','ci']
     direct = staticmethod(ldmc)
 
 @base.vectorize
 class ldmsi(base.ReadMemoryInstruction, base.IndirectMemoryInstruction):
-    r""" Assigns register $s_i$ the value in memory \verb+S[cj]+. """
+    """ Assign secret memory value(s) to secret register (vector) by
+    register address. The vectorized version starts at the base
+    address and then iterates the memory address.
+
+    :param: destination (sint)
+    :param: memory address base (regint)
+
+    """
     code = base.opcodes['LDMSI']
     arg_format = ['sw','ci']
     direct = staticmethod(ldms)
 
 @base.vectorize
 class stmci(base.WriteMemoryInstruction, base.IndirectMemoryInstruction):
-    r""" Sets \verb+C[cj]+ to be the value $c_i$. """
+    """ Assign clear register (vector) to clear memory value(s) by
+    register address. The vectorized version starts at the base
+    address and then iterates the memory address.
+
+    :param: source (cint)
+    :param: memory address base (regint)
+
+    """
     code = base.opcodes['STMCI']
     arg_format = ['c','ci']
     direct = staticmethod(stmc)
 
 @base.vectorize
 class stmsi(base.WriteMemoryInstruction, base.IndirectMemoryInstruction):
-    r""" Sets \verb+S[cj]+ to be the value $s_i$. """
+    """ Assign secret register (vector) to secret memory value(s) by
+    register address. The vectorized version starts at the base
+    address and then iterates the memory address.
+
+    :param: source (sint)
+    :param: memory address base (regint)
+
+    """
     code = base.opcodes['STMSI']
     arg_format = ['s','ci']
     direct = staticmethod(stms)
 
 @base.vectorize
 class ldminti(base.ReadMemoryInstruction, base.IndirectMemoryInstruction):
-    r""" Assigns register $ci_i$ the value in memory \verb+Ci[cj]+. """
+    """ Assign clear integer memory value(s) to clear integer register
+    (vector) by register address. The vectorized version starts at the
+    base address and then iterates the memory address.
+
+    :param: destination (regint)
+    :param: memory address base (regint)
+
+    """
     code = base.opcodes['LDMINTI']
     arg_format = ['ciw','ci']
     direct = staticmethod(ldmint)
 
 @base.vectorize
 class stminti(base.WriteMemoryInstruction, base.IndirectMemoryInstruction):
-    r""" Sets \verb+Ci[cj]+ to be the value $ci_i$. """
+    """ Assign clear integer register (vector) to clear integer memory
+    value(s) by register address. The vectorized version starts at the
+    base address and then iterates the memory address.
+
+    :param: source (regint)
+    :param: memory address base (regint)
+
+    """
     code = base.opcodes['STMINTI']
     arg_format = ['ci','ci']
     direct = staticmethod(stmint)
@@ -162,29 +258,12 @@ class gstmsi(base.WriteMemoryInstruction, base.IndirectMemoryInstruction):
 
 @base.gf2n
 @base.vectorize
-class protectmems(base.Instruction):
-    r""" Protects secret memory range $[ci_i,ci_j)$. """
-    code = base.opcodes['PROTECTMEMS']
-    arg_format = ['ci','ci']
-
-@base.gf2n
-@base.vectorize
-class protectmemc(base.Instruction):
-    r""" Protects clear memory range $[ci_i,ci_j)$. """
-    code = base.opcodes['PROTECTMEMC']
-    arg_format = ['ci','ci']
-
-@base.gf2n
-@base.vectorize
-class protectmemint(base.Instruction):
-    r""" Protects integer memory range $[ci_i,ci_j)$. """
-    code = base.opcodes['PROTECTMEMINT']
-    arg_format = ['ci','ci']
-
-@base.gf2n
-@base.vectorize
 class movc(base.Instruction):
-    r""" Assigns register $c_i$ the value in the register $c_j$. """
+    """ Copy clear register (vector).
+
+    :param: destination (cint)
+    :param: source (cint)
+    """
     __slots__ = []
     code = base.opcodes['MOVC']
     arg_format = ['cw','c']
@@ -192,27 +271,41 @@ class movc(base.Instruction):
 @base.gf2n
 @base.vectorize
 class movs(base.Instruction):
-    r""" Assigns register $s_i$ the value in the register $s_j$. """
+    """ Copy secret register (vector).
+
+    :param: destination (cint)
+    :param: source (cint)
+    """
     __slots__ = []
     code = base.opcodes['MOVS']
     arg_format = ['sw','s']
 
 @base.vectorize
 class movint(base.Instruction):
-    r""" Assigns register $ci_i$ the value in the register $ci_j$. """
+    """ Copy clear integer register (vector).
+
+    :param: destination (regint)
+    :param: source (regint)
+    """
     __slots__ = []
     code = base.opcodes['MOVINT']
     arg_format = ['ciw','ci']
 
 @base.vectorize
 class pushint(base.StackInstruction):
-    r""" Pushes register $ci_i$ to the thread-local stack. """
+    """ Pushes clear integer register to the thread-local stack.
+
+    :param: source (regint)
+    """
     code = base.opcodes['PUSHINT']
     arg_format = ['ci']
 
 @base.vectorize
 class popint(base.StackInstruction):
-    r""" Pops from the thread-local stack to register $ci_i$. """
+    """ Pops from the thread-local stack to clear integer register.
+
+    :param: destination (regint)
+    """
     code = base.opcodes['POPINT']
     arg_format = ['ciw']
 
@@ -223,70 +316,121 @@ class popint(base.StackInstruction):
 
 @base.vectorize
 class ldtn(base.Instruction):
-    r""" Assigns register $c_i$ the number of the current thread. """
+    """ Store the number of the current thread in clear integer register.
+
+    :param: destination (regint)
+    """
     code = base.opcodes['LDTN']
     arg_format = ['ciw']
 
 @base.vectorize
 class ldarg(base.Instruction):
-    r""" Assigns register $c_i$ the argument passed to the current thread. """
+    """ Store the argument passed to the current thread in clear integer
+    register.
+
+    :param: destination (regint)
+    """
     code = base.opcodes['LDARG']
     arg_format = ['ciw']
 
 @base.vectorize
 class starg(base.Instruction):
-    r""" Assigns register $c_i$ to the argument. """
+    """ Copy clear integer register to the thread argument.
+
+    :param: source (regint)
+    """
     code = base.opcodes['STARG']
     arg_format = ['ci']
 
 @base.gf2n
 class reqbl(base.Instruction):
-    r""" Require bit length $n". """
+    """ Requirement on computation modulus. Minimal bit length of prime if
+    positive, minus exact bit length of power of two if negative.
+
+
+    :param: requirement (int)
+    """
     code = base.opcodes['REQBL']
     arg_format = ['int']
 
 class time(base.IOInstruction):
-    r""" Output epoch time. """
+    """ Output time since start of computation. """
     code = base.opcodes['TIME']
     arg_format = []
 
 class start(base.Instruction):
-    r""" Start timer. """
+    """ Start timer.
+
+    :param: timer number (int)
+    """
     code = base.opcodes['START']
     arg_format = ['i']
 
 class stop(base.Instruction):
-    r""" Stop timer. """
+    """ Stop timer.
+
+    :param: timer number (int)
+    """
     code = base.opcodes['STOP']
     arg_format = ['i']
 
 class use(base.Instruction):
-    r""" Offline data usage. """
+    """ Offline data usage. Necessary to avoid reusage while using
+    preprocessing from files. Also used to multithreading for expensive
+    preprocessing.
+
+    :param: domain (0: integer, 1: :math:`\mathrm{GF}(2^n)`, 2: bit)
+    :param: type (0: triple, 1: square, 2: bit, 3: inverse, 6: daBit)
+    :param: number (int, -1 for unknown)
+    """
     code = base.opcodes['USE']
     arg_format = ['int','int','int']
 
 class use_inp(base.Instruction):
-    r""" Input usage. """
+    """ Input usage.  Necessary to avoid reusage while using
+    preprocessing from files.
+
+    :param: domain (0: integer, 1: :math:`\mathrm{GF}(2^n)`, 2: bit)
+    :param: input player (int)
+    :param: number (int, -1 for unknown)
+    """
     code = base.opcodes['USE_INP']
     arg_format = ['int','int','int']
 
 class use_edabit(base.Instruction):
-    r""" edaBit usage. """
+    """ edaBit usage. Necessary to avoid reusage while using
+    preprocessing from files. Also used to multithreading for expensive
+    preprocessing.
+
+    :param: loose/strict (0/1)
+    :param: length (int)
+    :param: number (int, -1 for unknown)
+    """
     code = base.opcodes['USE_EDABIT']
     arg_format = ['int','int','int']
 
 class run_tape(base.Instruction):
-    r""" Start tape $n$ in thread $c_i$ with argument $c_j$. """
+    """ Start tape/bytecode file in another thread.
+
+    :param: number of arguments to follow (multiple of three)
+    :param: virtual machine thread number (int)
+    :param: tape number (int)
+    :param: tape argument (int)
+    :param: (repeat the last three)...
+    """
     code = base.opcodes['RUN_TAPE']
     arg_format = tools.cycle(['int','int','int'])
 
 class join_tape(base.Instruction):
-    r""" Join thread $c_i$. """
+    """ Join thread.
+
+    :param: virtual machine thread number (int)
+    """
     code = base.opcodes['JOIN_TAPE']
     arg_format = ['int']
 
 class crash(base.IOInstruction):
-    r""" Crash runtime. """
+    """ Crash runtime. """
     code = base.opcodes['CRASH']
     arg_format = []
 
@@ -300,22 +444,35 @@ class stop_grind(base.IOInstruction):
 
 @base.gf2n
 class use_prep(base.Instruction):
-    r""" Input usage. """
+    """ Custom preprocessed data usage.
+
+    :param: tag (16 bytes / 4 units, cut off at first zero byte)
+    :param: number of items to use (int, -1 for unknown)
+    """
     code = base.opcodes['USE_PREP']
     arg_format = ['str','int']
 
 class nplayers(base.Instruction):
-    r""" Number of players """
+    """ Store number of players in clear integer register.
+
+    :param: destination (regint)
+    """
     code = base.opcodes['NPLAYERS']
     arg_format = ['ciw']
 
 class threshold(base.Instruction):
-    r""" Maximal number of corrupt players """
+    """ Store maximal number of corrupt players in clear integer register.
+
+    :param: destination (regint)
+    """
     code = base.opcodes['THRESHOLD']
     arg_format = ['ciw']
 
 class playerid(base.Instruction):
-    r""" My player number """
+    """ Store current player number in clear integer register.
+
+    :param: destination (regint)
+    """
     code = base.opcodes['PLAYERID']
     arg_format = ['ciw']
 
@@ -326,7 +483,12 @@ class playerid(base.Instruction):
 @base.gf2n
 @base.vectorize
 class addc(base.AddBase):
-    r""" Clear addition $c_i=c_j+c_k$. """
+    """ Clear addition.
+
+    :param: result (cint)
+    :param: summand (cint)
+    :param: summand (cint)
+    """
     __slots__ = []
     code = base.opcodes['ADDC']
     arg_format = ['cw','c','c']
@@ -334,7 +496,12 @@ class addc(base.AddBase):
 @base.gf2n
 @base.vectorize
 class adds(base.AddBase):
-    r""" Secret addition $s_i=s_j+s_k$. """
+    """ Secret addition.
+
+    :param: result (sint)
+    :param: summand (sint)
+    :param: summand (sint)
+    """
     __slots__ = []
     code = base.opcodes['ADDS']
     arg_format = ['sw','s','s']
@@ -342,7 +509,12 @@ class adds(base.AddBase):
 @base.gf2n
 @base.vectorize
 class addm(base.AddBase):
-    r""" Mixed addition $s_i=s_j+c_k$. """
+    """ Mixed addition.
+
+    :param: result (sint)
+    :param: summand (sint)
+    :param: summand (cint)
+    """
     __slots__ = []
     code = base.opcodes['ADDM']
     arg_format = ['sw','s','c']
@@ -350,7 +522,12 @@ class addm(base.AddBase):
 @base.gf2n
 @base.vectorize
 class subc(base.SubBase):
-    r""" Clear subtraction $c_i=c_j-c_k$. """
+    """ Clear subtraction.
+
+    :param: result (cint)
+    :param: first operand (cint)
+    :param: second operand (cint)
+    """
     __slots__ = []
     code = base.opcodes['SUBC']
     arg_format = ['cw','c','c']
@@ -358,7 +535,12 @@ class subc(base.SubBase):
 @base.gf2n
 @base.vectorize
 class subs(base.SubBase):
-    r""" Secret subtraction $s_i=s_j-s_k$. """
+    """ Secret subtraction.
+
+    :param: result (sint)
+    :param: first operand (sint)
+    :param: second operand (sint)
+    """
     __slots__ = []
     code = base.opcodes['SUBS']
     arg_format = ['sw','s','s']
@@ -366,7 +548,12 @@ class subs(base.SubBase):
 @base.gf2n
 @base.vectorize
 class subml(base.SubBase):
-    r""" Mixed subtraction $s_i=s_j-c_k$. """
+    """ Subtract clear from secret value.
+
+    :param: result (sint)
+    :param: first operand (sint)
+    :param: second operand (cint)
+    """
     __slots__ = []
     code = base.opcodes['SUBML']
     arg_format = ['sw','s','c']
@@ -374,7 +561,12 @@ class subml(base.SubBase):
 @base.gf2n
 @base.vectorize
 class submr(base.SubBase):
-    r""" Mixed subtraction $s_i=c_j-s_k$. """
+    """ Subtract secret from clear value.
+
+    :param: result (sint)
+    :param: first operand (cint)
+    :param: second operand (sint)
+    """
     __slots__ = []
     code = base.opcodes['SUBMR']
     arg_format = ['sw','c','s']
@@ -382,7 +574,12 @@ class submr(base.SubBase):
 @base.gf2n
 @base.vectorize
 class mulc(base.MulBase):
-    r""" Clear multiplication $c_i=c_j \cdot c_k$. """
+    """ Clear multiplication.
+
+    :param: result (cint)
+    :param: factor (cint)
+    :param: factor (cint)
+    """
     __slots__ = []
     code = base.opcodes['MULC']
     arg_format = ['cw','c','c']
@@ -390,7 +587,12 @@ class mulc(base.MulBase):
 @base.gf2n
 @base.vectorize
 class mulm(base.MulBase):
-    r""" Mixed multiplication $s_i=c_j \cdot s_k$. """
+    """ Multiply secret and clear value.
+
+    :param: result (sint)
+    :param: factor (sint)
+    :param: factor (cint)
+    """
     __slots__ = []
     code = base.opcodes['MULM']
     arg_format = ['sw','s','c']
@@ -398,35 +600,73 @@ class mulm(base.MulBase):
 @base.gf2n
 @base.vectorize
 class divc(base.InvertInstruction):
-    r""" Clear division $c_i=c_j/c_k$. """
+    """ Clear division.
+
+    :param: result (cint)
+    :param: dividend (cint)
+    :param: divisor (cint)
+    """
     __slots__ = []
     code = base.opcodes['DIVC']
     arg_format = ['cw','c','c']
 
 @base.gf2n
 @base.vectorize
+class floordivc(base.Instruction):
+    """ Clear integer floor division.
+
+    :param: result (cint)
+    :param: dividend (cint)
+    :param: divisor (cint)
+    """
+    __slots__ = []
+    code = base.opcodes['FLOORDIVC']
+    arg_format = ['cw','c','c']
+
+@base.gf2n
+@base.vectorize
 class modc(base.Instruction):
-    r""" Clear modular reduction $c_i=c_j/c_k$. """
+    """ Clear modular reduction.
+
+    :param: result (cint)
+    :param: dividend (cint)
+    :param: divisor (cint)
+    """
     __slots__ = []
     code = base.opcodes['MODC']
     arg_format = ['cw','c','c']
 
 @base.vectorize
 class inv2m(base.InvertInstruction):
+    """ Inverse of power of two modulo prime (the computation modulus).
+
+    :param: result (cint)
+    :param: exponent (int)
+    """
     __slots__ = []
     code = base.opcodes['INV2M']
     arg_format = ['cw','int']
 
 @base.vectorize
 class legendrec(base.Instruction):
-    r""" Clear Legendre symbol computation, $c_i = (c_j / p)$. """
+    """ Clear Legendre symbol computation (a/p) over prime p
+    (the computation modulus).
+
+    :param: result (cint)
+    :param: a (int)
+    """
     __slots__ = []
     code = base.opcodes['LEGENDREC']
     arg_format = ['cw','c']
 
 @base.vectorize
 class digestc(base.Instruction):
-    r""" Clear truncated hash computation, $c_i = H(c_j)[bytes]$. """
+    """ Clear truncated hash computation.
+
+    :param: result (cint)
+    :param: input (cint)
+    :param: byte length of hash value used (int)
+    """
     __slots__ = []
     code = base.opcodes['DIGESTC']
     arg_format = ['cw','c','int']
@@ -438,7 +678,12 @@ class digestc(base.Instruction):
 @base.gf2n
 @base.vectorize
 class andc(base.Instruction):
-    r""" Clear logical AND $c_i = c_j \land c_k$ """
+    """ Logical AND of clear (vector) registers.
+
+    :param: result (cint)
+    :param: operand (cint)
+    :param: operand (cint)
+    """
     __slots__ = []
     code = base.opcodes['ANDC']
     arg_format = ['cw','c','c']
@@ -446,7 +691,12 @@ class andc(base.Instruction):
 @base.gf2n
 @base.vectorize
 class orc(base.Instruction):
-    r""" Clear logical OR $c_i = c_j \lor c_k$ """
+    """ Logical OR of clear (vector) registers.
+
+    :param: result (cint)
+    :param: operand (cint)
+    :param: operand (cint)
+    """
     __slots__ = []
     code = base.opcodes['ORC']
     arg_format = ['cw','c','c']
@@ -454,14 +704,25 @@ class orc(base.Instruction):
 @base.gf2n
 @base.vectorize
 class xorc(base.Instruction):
-    r""" Clear logical XOR $c_i = c_j \oplus c_k$ """
+    """ Logical XOR of clear (vector) registers.
+
+    :param: result (cint)
+    :param: operand (cint)
+    :param: operand (cint)
+    """
     __slots__ = []
     code = base.opcodes['XORC']
     arg_format = ['cw','c','c']
 
 @base.vectorize
 class notc(base.Instruction):
-    r""" Clear logical NOT $c_i = \lnot c_j$ """
+    """ Clear logical NOT of a constant number of bits of clear
+    (vector) register.
+
+    :param: result (cint)
+    :param: operand (cint)
+    :param: bit length (int)
+    """
     __slots__ = []
     code = base.opcodes['NOTC']
     arg_format = ['cw','c', 'int']
@@ -534,7 +795,12 @@ class gmulbitm(base.MulBase):
 @base.gf2n
 @base.vectorize
 class addci(base.ClearImmediate):
-    """ Clear addition of immediate value $c_i=c_j+n$. """
+    """ Addition of clear register (vector) and (constant) immediate value.
+
+    :param: result (cint)
+    :param: summand (cint)
+    :param: summand (int)
+    """
     __slots__ = []
     code = base.opcodes['ADDCI']
     op = '__add__'
@@ -542,7 +808,12 @@ class addci(base.ClearImmediate):
 @base.gf2n
 @base.vectorize
 class addsi(base.SharedImmediate):
-    """ Secret addition of immediate value $s_i=s_j+n$. """
+    """ Addition of secret register (vector)  and (constant) immediate value.
+
+    :param: result (cint)
+    :param: summand (cint)
+    :param: summand (int)
+    """
     __slots__ = []
     code = base.opcodes['ADDSI']
     op = '__add__'
@@ -550,7 +821,12 @@ class addsi(base.SharedImmediate):
 @base.gf2n
 @base.vectorize
 class subci(base.ClearImmediate):
-    r""" Clear subtraction of immediate value $c_i=c_j-n$. """
+    """ Subtraction of (constant) immediate value from clear register (vector).
+
+    :param: result (cint)
+    :param: first operand (cint)
+    :param: second operand (int)
+    """
     __slots__ = []
     code = base.opcodes['SUBCI']
     op = '__sub__'
@@ -558,7 +834,13 @@ class subci(base.ClearImmediate):
 @base.gf2n
 @base.vectorize
 class subsi(base.SharedImmediate):
-    r""" Secret subtraction of immediate value $s_i=s_j-n$. """
+    """ Subtraction of (constant) immediate value from secret
+    register (vector).
+
+    :param: result (sint)
+    :param: first operand (sint)
+    :param: second operand (int)
+    """
     __slots__ = []
     code = base.opcodes['SUBSI']
     op = '__sub__'
@@ -566,7 +848,13 @@ class subsi(base.SharedImmediate):
 @base.gf2n
 @base.vectorize
 class subcfi(base.ClearImmediate):
-    r""" Clear subtraction from immediate value $c_i=n-c_j$. """
+    """ Subtraction of clear register (vector) from (constant)
+    immediate value.
+
+    :param: result (cint)
+    :param: first operand (int)
+    :param: second operand (cint)
+    """
     __slots__ = []
     code = base.opcodes['SUBCFI']
     op = '__rsub__'
@@ -574,7 +862,13 @@ class subcfi(base.ClearImmediate):
 @base.gf2n
 @base.vectorize
 class subsfi(base.SharedImmediate):
-    r""" Secret subtraction from immediate value $s_i=n-s_j$. """
+    """ Subtraction of secret register (vector) from (constant)
+    immediate value.
+
+    :param: result (sint)
+    :param: first operand (int)
+    :param: second operand (sint)
+    """
     __slots__ = []
     code = base.opcodes['SUBSFI']
     op = '__rsub__'
@@ -582,7 +876,13 @@ class subsfi(base.SharedImmediate):
 @base.gf2n
 @base.vectorize
 class mulci(base.ClearImmediate):
-    r""" Clear multiplication by immediate value $c_i=c_j \cdot n$. """
+    """ Multiplication of clear register (vector) and (constant)
+    immediate value.
+
+    :param: result (cint)
+    :param: factor (cint)
+    :param: factor (int)
+    """
     __slots__ = []
     code = base.opcodes['MULCI']
     op = '__mul__'
@@ -590,7 +890,14 @@ class mulci(base.ClearImmediate):
 @base.gf2n
 @base.vectorize
 class mulsi(base.SharedImmediate):
-    r""" Secret multiplication by immediate value $s_i=s_j \cdot n$. """
+    """ Multiplication of secret register (vector) and (constant)
+    immediate value.
+
+    :param: result (sint)
+    :param: factor (sint)
+    :param: factor (int)
+
+    """
     __slots__ = []
     code = base.opcodes['MULSI']
     op = '__mul__'
@@ -598,14 +905,26 @@ class mulsi(base.SharedImmediate):
 @base.gf2n
 @base.vectorize
 class divci(base.InvertInstruction, base.ClearImmediate):
-    r""" Clear division by immediate value $c_i=c_j/n$. """
+    """ Division of secret register (vector) and (constant) immediate value.
+
+    :param: result (cint)
+    :param: dividend (cint)
+    :param: divisor (int)
+    """
     __slots__ = []
     code = base.opcodes['DIVCI']
 
 @base.gf2n
 @base.vectorize
 class modci(base.ClearImmediate):
-    r""" Clear modular reduction by immediate value $c_i=c_j \mod{n}$. """
+    """ Modular reduction of clear register (vector) and (constant)
+    immediate value.
+
+    :param: result (cint)
+    :param: dividend (cint)
+    :param: divisor (int)
+
+    """
     __slots__ = []
     code = base.opcodes['MODCI']
     op = '__mod__'
@@ -613,7 +932,13 @@ class modci(base.ClearImmediate):
 @base.gf2n
 @base.vectorize
 class andci(base.ClearImmediate):
-    r""" Clear logical AND with immediate value $c_i = c_j \land c_k$ """
+    """ Logical AND of clear register (vector) and (constant)
+    immediate value.
+
+    :param: result (cint)
+    :param: operand (cint)
+    :param: operand (int)
+    """
     __slots__ = []
     code = base.opcodes['ANDCI']
     op = '__and__'
@@ -621,7 +946,13 @@ class andci(base.ClearImmediate):
 @base.gf2n
 @base.vectorize
 class xorci(base.ClearImmediate):
-    r""" Clear logical XOR with immediate value $c_i = c_j \oplus c_k$ """
+    """ Logical XOR of clear register (vector) and (constant)
+    immediate value.
+
+    :param: result (cint)
+    :param: operand (cint)
+    :param: operand (int)
+    """
     __slots__ = []
     code = base.opcodes['XORCI']
     op = '__xor__'
@@ -629,7 +960,13 @@ class xorci(base.ClearImmediate):
 @base.gf2n
 @base.vectorize
 class orci(base.ClearImmediate):
-    r""" Clear logical OR with immediate value $c_i = c_j \vee c_k$ """
+    """ Logical OR of clear register (vector) and (constant)
+    immediate value.
+
+    :param: result (cint)
+    :param: operand (cint)
+    :param: operand (int)
+    """
     __slots__ = []
     code = base.opcodes['ORCI']
     op = '__or__'
@@ -642,7 +979,12 @@ class orci(base.ClearImmediate):
 @base.gf2n
 @base.vectorize
 class shlc(base.Instruction):
-    r""" Clear bitwise shift left $c_i = c_j << c_k$ """
+    """ Bitwise left shift of clear register (vector).
+
+    :param: result (cint)
+    :param: first operand (cint)
+    :param: second operand (cint)
+    """
     __slots__ = []
     code = base.opcodes['SHLC']
     arg_format = ['cw','c','c']
@@ -650,7 +992,12 @@ class shlc(base.Instruction):
 @base.gf2n
 @base.vectorize
 class shrc(base.Instruction):
-    r""" Clear bitwise shift right $c_i = c_j >> c_k$ """
+    """ Bitwise right shift of clear register (vector).
+
+    :param: result (cint)
+    :param: first operand (cint)
+    :param: second operand (cint)
+    """
     __slots__ = []
     code = base.opcodes['SHRC']
     arg_format = ['cw','c','c']
@@ -658,7 +1005,14 @@ class shrc(base.Instruction):
 @base.gf2n
 @base.vectorize
 class shlci(base.ClearShiftInstruction):
-    r""" Clear bitwise shift left by immediate value $c_i = c_j << n$ """
+    """ Bitwise left shift of clear register (vector) by (constant)
+    immediate value.
+
+    :param: result (cint)
+    :param: first operand (cint)
+    :param: second operand (int)
+
+    """
     __slots__ = []
     code = base.opcodes['SHLCI']
     op = '__lshift__'
@@ -666,14 +1020,33 @@ class shlci(base.ClearShiftInstruction):
 @base.gf2n
 @base.vectorize
 class shrci(base.ClearShiftInstruction):
-    r""" Clear bitwise shift right by immediate value $c_i = c_j >> n$ """
+    """ Bitwise right shift of clear register (vector) by (constant)
+    immediate value.
+
+    :param: result (cint)
+    :param: first operand (cint)
+    :param: second operand (int)
+
+    """
     __slots__ = []
     code = base.opcodes['SHRCI']
     op = '__rshift__'
 
 @base.vectorize
 class shrsi(base.ClearShiftInstruction):
-    r""" Secret bitwise shift right by immediate value. """
+    """ Bitwise right shift of secret register (vector) by (constant)
+    immediate value. This only makes sense in connection with
+    protocols allowing local share conversion (i.e., based on additive
+    secret sharing modulo a power of two). Moreover, the result is not
+    a secret sharing of the right shift of the secret value but needs
+    to be corrected using the overflow. This is explained by `Dalskov
+    et al. <https://eprint.iacr.org/2020/1330>`_ in the appendix.
+
+    :param: result (sint)
+    :param: first operand (sint)
+    :param: second operand (int)
+
+    """
     __slots__ = []
     code = base.opcodes['SHRSI']
     arg_format = ['sw','s','i']
@@ -685,8 +1058,12 @@ class shrsi(base.ClearShiftInstruction):
 @base.gf2n
 @base.vectorize
 class triple(base.DataInstruction):
-    r""" Load secret variables $s_i$, $s_j$ and $s_k$
-    with the next multiplication triple. """
+    """ Store fresh random triple(s) in secret register (vectors).
+
+    :param: factor (sint)
+    :param: factor (sint)
+    :param: product (sint)
+    """
     __slots__ = []
     code = base.opcodes['TRIPLE']
     arg_format = ['sw','sw','sw']
@@ -720,8 +1097,10 @@ class gbitgf2ntriple(base.DataInstruction):
 @base.gf2n
 @base.vectorize
 class bit(base.DataInstruction):
-    r""" Load secret variable $s_i$
-    with the next secret bit. """
+    """ Store fresh random triple(s) in secret register (vectors).
+
+    :param: destination (sint)
+    """
     __slots__ = []
     code = base.opcodes['BIT']
     arg_format = ['sw']
@@ -729,7 +1108,11 @@ class bit(base.DataInstruction):
 
 @base.vectorize
 class dabit(base.DataInstruction):
-    """ daBit """
+    """ Store fresh random daBit(s) in secret register (vectors).
+
+    :param: arithmetic part (sint)
+    :param: binary part (sbit)
+    """
     __slots__ = []
     code = base.opcodes['DABIT']
     arg_format = ['sw', 'sbw']
@@ -738,7 +1121,14 @@ class dabit(base.DataInstruction):
 
 @base.vectorize
 class edabit(base.Instruction):
-    """ edaBit """
+    """ Store fresh random loose edaBit(s) in secret register (vectors).
+    The length is the first argument minus one.
+
+    :param: number of arguments to follow / number of bits plus two (int)
+    :param: arithmetic (sint)
+    :param: binary (sbit)
+    :param: (binary)...
+    """
     __slots__ = []
     code = base.opcodes['EDABIT']
     arg_format = tools.chain(['sw'], itertools.repeat('sbw'))
@@ -749,7 +1139,14 @@ class edabit(base.Instruction):
 
 @base.vectorize
 class sedabit(base.Instruction):
-    """ strict edaBit """
+    """ Store fresh random strict edaBit(s) in secret register (vectors).
+    The length is the first argument minus one.
+
+    :param: number of arguments to follow / number of bits plus two (int)
+    :param: arithmetic (sint)
+    :param: binary (sbit)
+    :param: (binary)...
+    """
     __slots__ = []
     code = base.opcodes['SEDABIT']
     arg_format = tools.chain(['sw'], itertools.repeat('sbw'))
@@ -760,17 +1157,38 @@ class sedabit(base.Instruction):
 
 @base.vectorize
 class randoms(base.Instruction):
-    """ Random share """
+    """ Store fresh length-restricted random shares(s) in secret register
+    (vectors). This is only implemented for protocols that also implement
+    local share conversion with :py:obj:`~Compiler.GC.instructions.split`.
+
+    :param: destination (sint)
+    :param: length (int)
+    """
     __slots__ = []
     code = base.opcodes['RANDOMS']
     arg_format = ['sw','int']
     field_type = 'modp'
 
+@base.vectorize
+class randomfulls(base.Instruction):
+    """ Store share(s) of a fresh secret random element in secret
+    register (vectors).
+
+    :param: destination (sint)
+    """
+    __slots__ = []
+    code = base.opcodes['RANDOMFULLS']
+    arg_format = ['sw']
+    field_type = 'modp'
+
 @base.gf2n
 @base.vectorize
 class square(base.DataInstruction):
-    r""" Load secret variables $s_i$ and $s_j$
-    with the next squaring tuple. """
+    """ Store fresh random square(s) in secret register (vectors).
+
+    :param: value (sint)
+    :param: square (sint)
+    """
     __slots__ = []
     code = base.opcodes['SQUARE']
     arg_format = ['sw','sw']
@@ -779,8 +1197,11 @@ class square(base.DataInstruction):
 @base.gf2n
 @base.vectorize
 class inverse(base.DataInstruction):
-    r""" Load secret variables $s_i$, $s_j$ and $s_k$
-    with the next inverse triple. """
+    """ Store fresh random inverse(s) in secret register (vectors).
+
+    :param: value (sint)
+    :param: inverse (sint)
+    """
     __slots__ = []
     code = base.opcodes['INV']
     arg_format = ['sw','sw']
@@ -807,6 +1228,13 @@ class inputmask(base.Instruction):
 
 @base.vectorize
 class inputmaskreg(base.Instruction):
+    """ Store fresh random input mask(s) in secret register (vector) and clear
+    register (vector) of the relevant player.
+
+    :param: mask (sint)
+    :param: mask (cint, player only)
+    :param: player (regint)
+    """
     __slots__ = []
     code = base.opcodes['INPUTMASKREG']
     arg_format = ['sw', 'cw', 'ci']
@@ -819,7 +1247,13 @@ class inputmaskreg(base.Instruction):
 @base.gf2n
 @base.vectorize
 class prep(base.Instruction):
-    r""" Custom preprocessed data """
+    """ Store custom preprocessed data in secret register (vectors).
+
+    :param: number of arguments to follow (int)
+    :param: tag (16 bytes / 4 units, cut off at first zero byte)
+    :param: destination (sint)
+    :param: (repeat destination)...
+    """
     __slots__ = []
     code = base.opcodes['PREP']
     arg_format = tools.chain(['str'], itertools.repeat('sw'))
@@ -912,6 +1346,22 @@ class inputmixed_base(base.TextInputInstruction):
 
 @base.vectorize
 class inputmixed(inputmixed_base):
+    """ Store private input in secret registers (vectors). The input is
+    read as integer or floating-point number and the latter is then
+    converted to the internal representation using the given precision.
+    This instruction uses compile-time player numbers.
+
+    :param: number of arguments to follow (int)
+    :param: type (0: integer, 1: fixed-point, 2: floating-point)
+    :param: destination (sint)
+    :param: destination (sint, only for floating-point)
+    :param: destination (sint, only for floating-point)
+    :param: destination (sint, only for floating-point)
+    :param: fixed-point precision or precision of floating-point significand (int, not with integer)
+    :param: input player (int)
+    :param: (repeat from type parameter)...
+
+    """
     code = base.opcodes['INPUTMIXED']
     player_arg_type = 'p'
 
@@ -925,6 +1375,22 @@ class inputmixed(inputmixed_base):
 
 @base.vectorize
 class inputmixedreg(inputmixed_base):
+    """ Store private input in secret registers (vectors). The input is
+    read as integer or floating-point number and the latter is then
+    converted to the internal representation using the given precision.
+    This instruction uses run-time player numbers.
+
+    :param: number of arguments to follow (int)
+    :param: type (0: integer, 1: fixed-point, 2: floating-point)
+    :param: destination (sint)
+    :param: destination (sint, only for floating-point)
+    :param: destination (sint, only for floating-point)
+    :param: destination (sint, only for floating-point)
+    :param: fixed-point precision or precision of floating-point significand (int, not with integer)
+    :param: input player (regint)
+    :param: (repeat from type parameter)...
+
+    """
     code = base.opcodes['INPUTMIXEDREG']
     player_arg_type = 'ci'
 
@@ -935,7 +1401,13 @@ class inputmixedreg(inputmixed_base):
 @base.gf2n
 @base.vectorize
 class rawinput(base.RawInputInstruction, base.Mergeable):
-    r""" Receive inputs from player $p$. """
+    """ Store private input in secret registers (vectors). The input is
+    read in the internal binary format according to the protocol.
+
+    :param: number of arguments to follow (multiple of two)
+    :param: player number (int)
+    :param: destination (sint)
+    """
     __slots__ = []
     code = base.opcodes['RAWINPUT']
     arg_format = tools.cycle(['p','sw'])
@@ -947,18 +1419,40 @@ class rawinput(base.RawInputInstruction, base.Mergeable):
             req_node.increment((self.field_type, 'input', player), \
                                self.get_size())
 
-@base.gf2n
-@base.vectorize
-class print_mem(base.IOInstruction):
-    r""" Print value in clear memory \verb|C[ci]| to stdout. """
+class inputpersonal(base.Instruction, base.Mergeable):
+    """ Private input from cint.
+
+    :param: vector size (int)
+    :param: player (int)
+    :param: destination (sint)
+    :param: source (cint)
+    :param: (repeat from vector size)...
+    """
     __slots__ = []
-    code = base.opcodes['PRINTMEM']
-    arg_format = ['c']
+    code = base.opcodes['INPUTPERSONAL']
+    arg_format = tools.cycle(['int','p','sw','c'])
+    field_type = 'modp'
+
+    def __init__(self, *args):
+        super(inputpersonal, self).__init__(*args)
+        for i in range(0, len(args), 4):
+            assert args[i + 2].size == args[i]
+            assert args[i + 3].size == args[i]
+
+    def add_usage(self, req_node):
+        for i in range(0, len(self.args), 4):
+            player = self.args[i + 1]
+            req_node.increment((self.field_type, 'input', player), \
+                               self.args[i])
 
 @base.gf2n
 @base.vectorize
 class print_reg(base.IOInstruction):
-    r""" Print value of register \verb|ci| to stdout and optional 4-char comment. """
+    """ Debugging output of clear register (vector).
+
+    :param: source (cint)
+    :param: comment (4 bytes / 1 unit)
+    """
     __slots__ = []
     code = base.opcodes['PRINTREG']
     arg_format = ['c','i']
@@ -969,35 +1463,63 @@ class print_reg(base.IOInstruction):
 @base.gf2n
 @base.vectorize
 class print_reg_plain(base.IOInstruction):
-    r""" Print only the value of register \verb|ci| to stdout. """
+    """ Output clear register.
+
+    :param: source (cint)
+    """
     __slots__ = []
     code = base.opcodes['PRINTREGPLAIN']
     arg_format = ['c']
 
 class cond_print_plain(base.IOInstruction):
-    r""" Conditionally print the value of a register. """
+    """ Conditionally output clear register (with precision).
+    Outputs :math:`x \cdot 2^p` where :math:`p` is the precision.
+
+    :param: condition (cint, no output if zero)
+    :param: source (cint)
+    :param: precision (cint)
+    """
     code = base.opcodes['CONDPRINTPLAIN']
     arg_format = ['c', 'c', 'c']
 
 class print_int(base.IOInstruction):
-    r""" Print only the value of register \verb|ci| to stdout. """
+    """ Output clear integer register.
+
+    :param: source (regint)
+    """
     __slots__ = []
     code = base.opcodes['PRINTINT']
     arg_format = ['ci']
 
 @base.vectorize
 class print_float_plain(base.IOInstruction):
+    """ Output floating-number from clear registers.
+
+    :param: significand (cint)
+    :param: exponent (cint)
+    :param: zero bit (cint, zero output if bit is one)
+    :param: sign bit (cint, negative output if bit is one)
+    :param: NaN (cint, regular number if zero)
+    """
     __slots__ = []
     code = base.opcodes['PRINTFLOATPLAIN']
     arg_format = ['c', 'c', 'c', 'c', 'c']
 
 class print_float_prec(base.IOInstruction):
+    """ Set number of digits after decimal point for
+    :py:obj:`~Compiler.instructions.print_float_plain`.
+
+    :param: number of digits (int)
+    """
     __slots__ = []
     code = base.opcodes['PRINTFLOATPREC']
     arg_format = ['int']
 
 class print_char(base.IOInstruction):
-    r""" Print a single character to stdout. """
+    """ Output a single byte.
+
+    :param: byte (int)
+    """
     code = base.opcodes['PRINTCHR']
     arg_format = ['int']
 
@@ -1005,7 +1527,10 @@ class print_char(base.IOInstruction):
         super(print_char, self).__init__(ord(ch))
 
 class print_char4(base.IOInstruction):
-    r""" Print a 4 character string. """
+    """ Output four bytes.
+
+    :param: four bytes (int)
+    """
     code = base.opcodes['PRINTSTR']
     arg_format = ['int']
 
@@ -1013,7 +1538,11 @@ class print_char4(base.IOInstruction):
         super(print_char4, self).__init__(self.str_to_int(val))
 
 class cond_print_str(base.IOInstruction):
-    r""" Print a 4 character string. """
+    """ Conditionally output four bytes.
+
+    :param: condition (cint, no output if zero)
+    :param: four bytes (int)
+    """
     code = base.opcodes['CONDPRINTSTR']
     arg_format = ['c', 'int']
 
@@ -1021,26 +1550,25 @@ class cond_print_str(base.IOInstruction):
         super(cond_print_str, self).__init__(cond, self.str_to_int(val))
 
 @base.vectorize
-class print_char_regint(base.IOInstruction):
-    r""" Print register $ci_i$ as a single character to stdout. """
-    code = base.opcodes['PRINTCHRINT']
-    arg_format = ['ci']
-
-@base.vectorize
-class print_char4_regint(base.IOInstruction):
-    r""" Print register $ci_i$ as a four character string to stdout. """
-    code = base.opcodes['PRINTSTRINT']
-    arg_format = ['ci']
-
-@base.vectorize
 class pubinput(base.PublicFileIOInstruction):
+    """ Store public input in clear register (vector).
+
+    :param: destination (cint)
+    """
     __slots__ = []
     code = base.opcodes['PUBINPUT']
-    arg_format = ['ciw']
+    arg_format = ['cw']
 
 @base.vectorize
 class readsocketc(base.IOInstruction):
-    """Read a variable number of clear GF(p) values from socket for a specified client id and store in registers"""
+    """ Read a variable number of clear values in internal representation
+    from socket for a specified client id and store them in clear registers.
+
+    :param: number of arguments to follow / number of inputs minus one (int)
+    :param: client id (regint)
+    :param: destination (cint)
+    :param: (repeat destination)...
+    """
     __slots__ = []
     code = base.opcodes['READSOCKETC']
     arg_format = tools.chain(['ci'], itertools.repeat('cw'))
@@ -1060,7 +1588,14 @@ class readsockets(base.IOInstruction):
 
 @base.vectorize
 class readsocketint(base.IOInstruction):
-    """Read variable number of 32-bit int from socket for a client id and store in registers"""
+    """ Read a variable number of 32-bit integers from socket for a
+    specified client id and store them in clear integer registers.
+
+    :param: number of arguments to follow / number of inputs minus one (int)
+    :param: client id (regint)
+    :param: destination (regint)
+    :param: (repeat destination)...
+    """
     __slots__ = []
     code = base.opcodes['READSOCKETINT']
     arg_format = tools.chain(['ci'], itertools.repeat('ciw'))
@@ -1082,23 +1617,14 @@ class writesocketc(base.IOInstruction):
         return True
 
 @base.vectorize
-class writesockets(base.IOInstruction):
-    """
-    Write a variable number of secret shares + MACs from registers into a socket
-    for a specified client id, message_type
-    """
-    __slots__ = []
-    code = base.opcodes['WRITESOCKETS']
-    arg_format = tools.chain(['ci', 'int'], itertools.repeat('s'))
-
-    def has_var_args(self):
-        return True
-
-@base.vectorize
 class writesocketshare(base.IOInstruction):
-    """
-    Write a variable number of secret shares (without MACs) from registers into socket 
-    for a specified client id, message_type
+    """ Write a variable number of shares (without MACs) from secret
+    registers into socket for a specified client id.
+
+    :param: client id (regint)
+    :param: message type (must be 0)
+    :param: source (sint)
+    :param: (repeat source)...
     """
     __slots__ = []
     code = base.opcodes['WRITESOCKETSHARE']
@@ -1121,16 +1647,34 @@ class writesocketint(base.IOInstruction):
         return True
 
 class listen(base.IOInstruction):
-    """Open a server socket on a party specific port number and listen for client connections (non-blocking)"""
+    """ Open a server socket on a party-specific port number and listen for
+    client connections (non-blocking).
+
+    :param: port number (regint)
+    """
     __slots__ = []
     code = base.opcodes['LISTEN']
-    arg_format = ['int']
+    arg_format = ['ci']
 
 class acceptclientconnection(base.IOInstruction):
-    """Wait for a connection at the given port and write socket handle to register """
+    """ Wait for a connection at the given port and write socket handle
+    to clear integer register.
+
+    :param: client id destination (regint)
+    :param: port number (regint)
+    """
     __slots__ = []
     code = base.opcodes['ACCEPTCLIENTCONNECTION']
-    arg_format = ['ciw', 'int']
+    arg_format = ['ciw', 'ci']
+
+class closeclientconnection(base.IOInstruction):
+    """ Close connection to client.
+
+    :param: client id (regint)
+    """
+    __slots__ = []
+    code = base.opcodes['CLOSECLIENTCONNECTION']
+    arg_format = ['ci']
 
 class closeclientconnection(base.IOInstruction):
     """ Close connection to client.
@@ -1141,7 +1685,14 @@ class closeclientconnection(base.IOInstruction):
     arg_format = ['ci']
 
 class writesharestofile(base.IOInstruction):
-    """Write shares to a file"""
+    """ Write shares to ``Persistence/Transactions-P<playerno>.data``
+    (appending at the end).
+
+    :param: number of shares (int)
+    :param: source (sint)
+    :param: (repeat from source)...
+
+    """
     __slots__ = []
     code = base.opcodes['WRITEFILESHARE']
     arg_format = itertools.repeat('s')
@@ -1150,12 +1701,13 @@ class writesharestofile(base.IOInstruction):
         return True
 
 class readsharesfromfile(base.IOInstruction):
-    """
-    Read shares from a file. Pass in start posn, return finish posn, shares.
-    Finish posn will return:
-      -2 file not found
-      -1 eof reached
-      position in file after read finished
+    """ Read shares from ``Persistence/Transactions-P<playerno>.data``.
+
+    :param: number of arguments to follow / number of shares plus two (int)
+    :param: starting position in number of shares from beginning (regint)
+    :param: destination for final position, -1 for eof reached, or -2 for file not found (regint)
+    :param: destination for share (sint)
+    :param: (repeat from destination for share)...
     """
     __slots__ = []
     code = base.opcodes['READFILESHARE']
@@ -1172,6 +1724,31 @@ class raw_output(base.PublicFileIOInstruction):
     code = base.opcodes['RAWOUTPUT']
     arg_format = ['c']
 
+@base.vectorize
+class intoutput(base.PublicFileIOInstruction):
+    """ Binary integer output.
+
+    :param: player (int)
+    :param: regint
+    """
+    __slots__ = []
+    code = base.opcodes['INTOUTPUT']
+    arg_format = ['p','ci']
+
+@base.vectorize
+class floatoutput(base.PublicFileIOInstruction):
+    """ Binary floating-point output.
+
+    :param: player (int)
+    :param: significand (cint)
+    :param: exponent (cint)
+    :param: zero bit (cint)
+    :param: sign bit (cint)
+    """
+    __slots__ = []
+    code = base.opcodes['FLOATOUTPUT']
+    arg_format = ['p','c','c','c','c']
+
 @base.gf2n
 @base.vectorize
 class startprivateoutput(base.Instruction):
@@ -1179,6 +1756,11 @@ class startprivateoutput(base.Instruction):
     __slots__ = []
     code = base.opcodes['STARTPRIVATEOUTPUT']
     arg_format = ['sw','s','p']
+    field_type = 'modp'
+
+    def add_usage(self, req_node):
+        req_node.increment((self.field_type, 'input', self.args[2]), \
+                               self.get_size())
 
 @base.gf2n
 @base.vectorize
@@ -1190,6 +1772,12 @@ class stopprivateoutput(base.Instruction):
 
 @base.vectorize
 class rand(base.Instruction):
+    """ Store insecure random value of specified length in clear integer
+    register (vector).
+
+    :param: destination (regint)
+    :param: length (regint)
+    """
     __slots__ = []
     code = base.opcodes['RAND']
     arg_format = ['ciw','ci']
@@ -1200,41 +1788,95 @@ class rand(base.Instruction):
 
 @base.vectorize
 class ldint(base.Instruction):
+    """ Store (constant) immediate value in clear integer register (vector).
+
+    :param: destination (regint)
+    :param: immediate (int)
+    """
     __slots__ = []
     code = base.opcodes['LDINT']
     arg_format = ['ciw', 'i']
 
 @base.vectorize
 class addint(base.IntegerInstruction):
+    """ Clear integer register (vector) addition.
+
+    :param: result (regint)
+    :param: summand (regint)
+    :param: summand (regint)
+    """
     __slots__ = []
     code = base.opcodes['ADDINT']
     op = operator.add
 
 @base.vectorize
 class subint(base.IntegerInstruction):
+    """ Clear integer register (vector) subtraction.
+
+    :param: result (regint)
+    :param: first operand (regint)
+    :param: second operand (regint)
+    """
     __slots__ = []
     code = base.opcodes['SUBINT']
     op = operator.sub
 
 @base.vectorize
 class mulint(base.IntegerInstruction):
+    """ Clear integer register (element-wise vector) multiplication.
+
+    :param: result (regint)
+    :param: factor (regint)
+    :param: factor (regint)
+    """
     __slots__ = []
     code = base.opcodes['MULINT']
     op = operator.mul
 
 @base.vectorize
 class divint(base.IntegerInstruction):
+    """ Clear integer register (element-wise vector) division with floor
+    rounding.
+
+    :param: result (regint)
+    :param: dividend (regint)
+    :param: divisor (regint)
+    """
     __slots__ = []
     code = base.opcodes['DIVINT']
     op = operator.floordiv
 
 @base.vectorize
 class bitdecint(base.Instruction):
+    """ Clear integer bit decomposition.
+
+    :param: number of arguments to follow / number of bits minus one (int)
+    :param: source (regint)
+    :param: destination for least significant bit (regint)
+    :param: (destination for one bit higher)...
+    """
     __slots__ = []
     code = base.opcodes['BITDECINT']
     arg_format = tools.chain(['ci'], itertools.repeat('ciw'))
 
 class incint(base.VectorInstruction):
+    """ Create incremental clear integer vector. For example, vector size 10,
+    base 1, increment 2, repeat 3, and wrap 2 produces the following::
+
+        (1, 1, 1, 3, 3, 3, 1, 1, 1, 3)
+
+    This is because the first number is always the :py:obj:`base`,
+    every number is repeated :py:obj:`repeat` times, after which
+    :py:obj:`increment` is added, and after :py:obj:`wrap` increments
+    the number returns to :py:obj:`base`.
+
+    :param: destination (regint)
+    :param: base (non-vector regint)
+    :param: increment (int)
+    :param: repeat (int)
+    :param: wrap (int)
+
+    """
     __slots__ = []
     code = base.opcodes['INCINT']
     arg_format = ['ciw', 'ci', 'i', 'i', 'i']
@@ -1246,6 +1888,11 @@ class incint(base.VectorInstruction):
         super(incint, self).__init__(*args, **kwargs)
 
 class shuffle(base.VectorInstruction):
+    """ Randomly shuffles clear integer vector with public randomness.
+
+    :param: destination (regint)
+    :param: source (regint)
+    """
     __slots__ = []
     code = base.opcodes['SHUFFLE']
     arg_format = ['ciw','ci']
@@ -1260,33 +1907,60 @@ class shuffle(base.VectorInstruction):
 
 @base.vectorize
 class eqzc(base.UnaryComparisonInstruction):
-    r""" Clear comparison $c_i = (c_j \stackrel{?}{==} 0)$. """
+    """ Clear integer zero test. The result is 1 for true and 0 for false.
+
+    :param: destination (regint)
+    :param: operand (regint)
+    """
     __slots__ = []
     code = base.opcodes['EQZC']
 
 @base.vectorize
 class ltzc(base.UnaryComparisonInstruction):
-    r""" Clear comparison $c_i = (c_j \stackrel{?}{<} 0)$. """
+    """ Clear integer less than zero test. The result is 1 for true
+    and 0 for false.
+
+    :param: destination (regint)
+    :param: operand (regint)
+    """
     __slots__ = []
     code = base.opcodes['LTZC']
 
 @base.vectorize
 class ltc(base.IntegerInstruction):
-    r""" Clear comparison $c_i = (c_j \stackrel{?}{<} c_k)$. """
+    """ Clear integer less-than comparison. The result is 1 if the
+    first operand is less and 0 otherwise.
+
+    :param: destination (regint)
+    :param: first operand (regint)
+    :param: second operand (regint)
+    """
     __slots__ = []
     code = base.opcodes['LTC']
     op = operator.lt
 
 @base.vectorize
 class gtc(base.IntegerInstruction):
-    r""" Clear comparison $c_i = (c_j \stackrel{?}{>} c_k)$. """
+    """ Clear integer greater-than comparison. The result is 1 if the
+    first operand is greater and 0 otherwise.
+
+    :param: destination (regint)
+    :param: first operand (regint)
+    :param: second operand (regint)
+    """
     __slots__ = []
     code = base.opcodes['GTC']
     op = operator.gt
 
 @base.vectorize
 class eqc(base.IntegerInstruction):
-    r""" Clear comparison $c_i = (c_j \stackrel{?}{==} c_k)$. """
+    """ Clear integer equality test. The result is 1 if the operands
+    are equal and 0 otherwise.
+
+    :param: destination (regint)
+    :param: first operand (regint)
+    :param: second operand (regint)
+    """
     __slots__ = []
     code = base.opcodes['EQC']
     op = operator.eq
@@ -1297,26 +1971,39 @@ class eqc(base.IntegerInstruction):
 ###
 
 class jmp(base.JumpInstruction):
-    """ Unconditional relative jump of $n+1$ instructions. """
+    """ Unconditional relative jump in the bytecode (compile-time parameter).
+    The parameter is added to the regular jump of one after every
+    instruction. This means that a jump of 0 results in a no-op while
+    a jump of -1 results in an infinite loop.
+
+    :param: number of instructions (int)
+    """
     __slots__ = []
     code = base.opcodes['JMP']
     arg_format = ['int']
     jump_arg = 0
 
 class jmpi(base.JumpInstruction):
-    """ Unconditional relative jump of $c_i+1$ instructions. """
+    """ Unconditional relative jump in the bytecode (run-time parameter).
+    The parameter is added to the regular jump of one after every
+    instruction. This means that a jump of 0 results in a no-op while
+    a jump of -1 results in an infinite loop.
+
+    :param: number of instructions (regint)
+    """
     __slots__ = []
     code = base.opcodes['JMPI']
     arg_format = ['ci']
     jump_arg = 0
 
 class jmpnz(base.JumpInstruction):
-    r""" Jump $n+1$ instructions if $c_i \neq 0$.
+    """ Conditional relative jump in the bytecode.
+    The parameter is added to the regular jump of one after every
+    instruction. This means that a jump of 0 results in a no-op while
+    a jump of -1 results in an infinite loop.
 
-    e.g.
-    jmpnz(c, n) : advance n+1 instructions if c is non-zero 
-    jmpnz(c, 0) : do nothing
-    jmpnz(c, -1): infinite loop if c is non-zero
+    :param: condition (regint, only jump if not zero)
+    :param: number of instructions (int)
     """
     __slots__ = []
     code = base.opcodes['JMPNZ']
@@ -1324,7 +2011,14 @@ class jmpnz(base.JumpInstruction):
     jump_arg = 1
 
 class jmpeqz(base.JumpInstruction):
-    r""" Jump $n+1$ instructions if $c_i == 0$. """
+    """ Conditional relative jump in the bytecode.
+    The parameter is added to the regular jump of one after every
+    instruction. This means that a jump of 0 results in a no-op while
+    a jump of -1 results in an infinite loop.
+
+    :param: condition (regint, only jump if zero)
+    :param: number of instructions (int)
+    """
     __slots__ = []
     code = base.opcodes['JMPEQZ']
     arg_format = ['ci', 'int']
@@ -1337,14 +2031,29 @@ class jmpeqz(base.JumpInstruction):
 @base.gf2n
 @base.vectorize
 class convint(base.Instruction):
-    """ Convert from integer register $ci_j$ to clear modp register $c_i$. """
+    """ Convert clear integer register (vector) to clear register (vector).
+
+    :param: destination (cint)
+    :param: source (regint)
+    """
     __slots__ =  []
     code = base.opcodes['CONVINT']
     arg_format = ['cw', 'ci']
 
 @base.vectorize
 class convmodp(base.Instruction):
-    """ Convert from clear modp register $c_j$ to integer register $ci_i$. """
+    """ Convert clear integer register (vector) to clear register
+    (vector). If the bit length is zero, the unsigned conversion is
+    used, otherwise signed conversion is used. This makes a difference
+    when computing modulo a prime :math:`p`. Signed conversion of
+    :math:`p-1` results in -1 while signed conversion results in
+    :math:`(p-1) \mod 2^{64}`.
+
+    :param: destination (regint)
+    :param: source (cint)
+    :param: bit length (int)
+
+    """
     __slots__ =  []
     code = base.opcodes['CONVMODP']
     arg_format = ['ciw', 'c', 'int']
@@ -1375,7 +2084,13 @@ class gconvgf2n(base.Instruction):
 @base.gf2n
 @base.vectorize
 class asm_open(base.VarArgsInstruction):
-    """ Open the value in $s_j$ and assign it to $c_i$. """
+    """ Reveal secret registers (vectors) to clear registers (vectors).
+
+    :param: number of argument to follow (multiple of two)
+    :param: destination (cint)
+    :param: source (sint)
+    :param: (repeat the last two)...
+    """
     __slots__ = []
     code = base.opcodes['OPEN']
     arg_format = tools.cycle(['cw','s'])
@@ -1383,7 +2098,14 @@ class asm_open(base.VarArgsInstruction):
 @base.gf2n
 @base.vectorize
 class muls(base.VarArgsInstruction, base.DataInstruction):
-    """ Secret multiplication $s_i = s_j \cdot s_k$. """
+    """ (Element-wise) multiplication of secret registers (vectors).
+
+    :param: number of arguments to follow (multiple of three)
+    :param: result (sint)
+    :param: factor (sint)
+    :param: factor (sint)
+    :param: (repeat the last three)...
+    """
     __slots__ = []
     code = base.opcodes['MULS']
     arg_format = tools.cycle(['sw','s','s'])
@@ -1416,7 +2138,15 @@ class muls(base.VarArgsInstruction, base.DataInstruction):
 
 @base.gf2n
 class mulrs(base.VarArgsInstruction, base.DataInstruction):
-    """ Secret multiplication $s_i = s_j \cdot s_k$. """
+    """ Constant-vector multiplication of secret registers.
+
+    :param: number of arguments to follow (multiple of four)
+    :param: vector size (int)
+    :param: result (sint)
+    :param: vector factor (sint)
+    :param: constant factor (sint)
+    :param: (repeat the last four)...
+    """
     __slots__ = []
     code = base.opcodes['MULRS']
     arg_format = tools.cycle(['int','sw','s','s'])
@@ -1441,7 +2171,19 @@ class mulrs(base.VarArgsInstruction, base.DataInstruction):
 @base.gf2n
 @base.vectorize
 class dotprods(base.VarArgsInstruction, base.DataInstruction):
-    """ Secret dot product. """
+    """ Dot product of secret registers (vectors).
+    Note that the vectorized version works element-wise.
+
+    :param: number of arguments to follow (int)
+    :param: twice the dot product length plus two (I know...)
+    :param: result (sint)
+    :param: first factor (sint)
+    :param: first factor (sint)
+    :param: second factor (sint)
+    :param: second factor (sint)
+    :param: (remaining factors)...
+    :param: (repeat from dot product length)...
+    """
     __slots__ = []
     code = base.opcodes['DOTPRODS']
     data_type = 'triple'
@@ -1492,12 +2234,35 @@ class matmul_base(base.DataInstruction):
         return reduce(operator.mul, self.args[3:6])
 
 class matmuls(matmul_base):
-    """ Secret matrix multiplication """
+    """ Secret matrix multiplication from registers. All matrices are
+    represented as vectors in row-first order.
+
+    :param: result (sint vector)
+    :param: first factor (sint vector)
+    :param: second factor (sint vector)
+    :param: number of rows in first factor and result (int)
+    :param: number of columns in first factor and rows in second factor (int)
+    :param: number of columns in second factor and result (int)
+    """
     code = base.opcodes['MATMULS']
     arg_format = ['sw','s','s','int','int','int']
 
 class matmulsm(matmul_base):
-    """ Secret matrix multiplication reading directly from memory """
+    """ Secret matrix multiplication reading directly from memory.
+
+    :param: result (sint vector in row-first order)
+    :param: base address of first factor (regint value)
+    :param: base address of second factor (regint value)
+    :param: number of rows in first factor and result (int)
+    :param: number of columns in first factor and rows in second factor (int)
+    :param: number of columns in second factor and result (int)
+    :param: rows of first factor to use (regint vector, length as number of rows in first factor)
+    :param: columns of first factor to use (regint vector, length below)
+    :param: rows of second factor to use (regint vector, length below)
+    :param: columns of second factor to use (regint vector, length below)
+    :param: number of columns of first / rows of second factor to use (int)
+    :param: number of columns of second factor to use (int)
+    """
     code = base.opcodes['MATMULSM']
     arg_format = ['sw','ci','ci','int','int','int','ci','ci','ci','ci',
                   'int','int']
@@ -1510,30 +2275,62 @@ class matmulsm(matmul_base):
             assert args[8 + i].size == args[4 + i]
 
 class conv2ds(base.DataInstruction):
-    """ Secret 2D convolution """
+    """ Secret 2D convolution.
+
+    :param: result (sint vector in row-first order)
+    :param: inputs (sint vector in row-first order)
+    :param: weights (sint vector in row-first order)
+    :param: output height (int)
+    :param: output width (int)
+    :param: input height (int)
+    :param: input width (int)
+    :param: weight height (int)
+    :param: weight width (int)
+    :param: stride height (int)
+    :param: stride width (int)
+    :param: number of channels (int)
+    :param: padding height (int)
+    :param: padding width (int)
+    :param: batch size (int)
+    """
     code = base.opcodes['CONV2DS']
     arg_format = ['sw','s','s','int','int','int','int','int','int','int','int',
-                  'int','int','int']
+                  'int','int','int','int']
     data_type = 'triple'
     is_vec = lambda self: True
 
     def __init__(self, *args, **kwargs):
         super(conv2ds, self).__init__(*args, **kwargs)
-        assert args[0].size == args[3] * args[4]
-        assert args[1].size == args[5] * args[6] * args[11]
+        assert args[0].size == args[3] * args[4] * args[14]
+        assert args[1].size == args[5] * args[6] * args[11] * args[14]
         assert args[2].size == args[7] * args[8] * args[11]
 
     def get_repeat(self):
         return self.args[3] * self.args[4] * self.args[7] * self.args[8] * \
-            self.args[11]
+            self.args[11] * self.args[14]
 
 @base.vectorize
 class trunc_pr(base.VarArgsInstruction):
-    """ Probalistic truncation for semi-honest computation """
-    """ with honest majority """
+    """ Probabilistic truncation if supported by the protocol.
+
+    :param: number of arguments to follow (multiple of four)
+    :param: destination (sint)
+    :param: source (sint)
+    :param: bit length of source (int)
+    :param: number of bits to truncate (int)
+    """
     __slots__ = []
     code = base.opcodes['TRUNC_PR']
     arg_format = tools.cycle(['sw','s','int','int'])
+
+class check(base.Instruction):
+    """
+    Force MAC check in current thread and all idle thread if current
+    thread is the main thread.
+    """
+    __slots__ = []
+    code = base.opcodes['CHECK']
+    arg_format = []
 
 ###
 ### CISC-style instructions
@@ -1573,48 +2370,6 @@ class lts(base.CISC):
         a = sint()
         subs(a, self.args[1], self.args[2])
         comparison.LTZ(self.args[0], a, self.args[3], self.args[4])
-
-@base.vectorize
-class g2muls(base.CISC):
-    r""" Secret GF(2) multiplication """
-    __slots__ = []
-    arg_format = ['sgw','sg','sg']
-
-    def expand(self):
-        s = [program.curr_block.new_reg('sg') for i in range(9)]
-        c = [program.curr_block.new_reg('cg') for i in range(3)]
-        gbittriple(s[0], s[1], s[2])
-        gsubs(s[3], self.args[1], s[0])
-        gsubs(s[4], self.args[2], s[1])
-        gasm_open(c[0], s[3])
-        gasm_open(c[1], s[4])
-        gmulbitm(s[5], s[1], c[0])
-        gmulbitm(s[6], s[0], c[1])
-        gmulbitc(c[2], c[0], c[1])
-        gadds(s[7], s[2], s[5])
-        gadds(s[8], s[7], s[6])
-        gaddm(self.args[0], s[8], c[2])
-
-#@base.vectorize
-#class gmulbits(base.CISC):
-#    r""" Secret $GF(2^n) \times GF(2)$ multiplication """
-#    __slots__ = []
-#    arg_format = ['sgw','sg','sg']
-#
-#    def expand(self):
-#        s = [program.curr_block.new_reg('s') for i in range(9)]
-#        c = [program.curr_block.new_reg('c') for i in range(3)]
-#        g2ntriple(s[0], s[1], s[2])
-#        subs(s[3], self.args[1], s[0])
-#        subs(s[4], self.args[2], s[1])
-#        startopen(s[3], s[4])
-#        stopopen(c[0], c[1])
-#        mulm(s[5], s[1], c[0])
-#        mulm(s[6], s[0], c[1])
-#        mulc(c[2], c[0], c[1])
-#        adds(s[7], s[2], s[5])
-#        adds(s[8], s[7], s[6])
-#        addm(self.args[0], s[8], c[2])
 
 # hack for circular dependency
 from Compiler import comparison

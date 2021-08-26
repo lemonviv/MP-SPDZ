@@ -8,6 +8,9 @@
 
 #include "Replicated.h"
 #include "Math/Z2k.h"
+#include "Processor/Instruction.h"
+
+#include <cmath>
 
 template<class T>
 class FakeProtocol : public ProtocolBase<T>
@@ -19,10 +22,15 @@ class FakeProtocol : public ProtocolBase<T>
 
     T trunc_max;
 
+    int fails;
+
+    vector<size_t> trunc_stats;
+
 public:
     Player& P;
 
-    FakeProtocol(Player& P) : P(P)
+    FakeProtocol(Player& P) :
+            fails(0), trunc_stats(T::MAX_N_BITS + 1), P(P)
     {
     }
 
@@ -30,6 +38,15 @@ public:
     ~FakeProtocol()
     {
         output_trunc_max<0>(T::invertible);
+        double expected = 0;
+        for (int i = 0; i <= T::MAX_N_BITS; i++)
+        {
+            if (trunc_stats[i] != 0)
+                cerr << i << ": " << trunc_stats[i] << endl;
+            expected += trunc_stats[i] * exp2(i - T::MAX_N_BITS);
+        }
+        if (expected != 0)
+            cerr << "Expected truncation failures: " << expected << endl;
     }
 
     template<int>
@@ -46,6 +63,11 @@ public:
     {
     }
 #endif
+
+    FakeProtocol branch()
+    {
+        return P;
+    }
 
     void init_mul(SubProcessor<T>*)
     {
@@ -113,24 +135,31 @@ public:
     template<int>
     void trunc_pr(const vector<int>& regs, int size, SubProcessor<T>& proc, false_type)
     {
+        this->trunc_rounds++;
+        this->trunc_pr_counter += size * regs.size() / 4;
         for (size_t i = 0; i < regs.size(); i += 4)
             for (int l = 0; l < size; l++)
             {
                 auto& res = proc.get_S_ref(regs[i] + l);
                 auto& source = proc.get_S_ref(regs[i + 1] + l);
-                T tmp = source - (T(1) << regs[i + 2] - 1);
+                T tmp = source;
                 tmp = tmp < T() ? (T() - tmp) : tmp;
                 trunc_max = max(trunc_max, tmp);
+#ifdef TRUNC_PR_EMULATION_STATS
+                trunc_stats.at(tmp == T() ? 0 : tmp.bit_length())++;
+#endif
 #ifdef CHECK_BOUNDS_IN_TRUNC_PR_EMULATION
                 auto test = (source >> (regs[i + 2]));
-                if (test != 0)
+                if (test != 0 and test != T(-1) >> regs[i + 2])
                 {
                     cerr << typename T::clear(source) << " has more than "
                             << regs[i + 2]
                             << " bits in " << regs[i + 3]
                             << "-bit truncation (test value "
                             << typename T::clear(test) << ")" << endl;
-                    throw runtime_error("trunc_pr overflow");
+                    fails++;
+                    if (fails > 1000)
+                        throw runtime_error("trunc_pr overflow");
                 }
 #endif
                 int n_shift = regs[i + 3];
@@ -152,11 +181,52 @@ public:
                     res = ((source + r) >> n_shift) - (r >> n_shift);
 #else
                 T r;
-                r.randomize_part(G, n_shift - 1);
+                r.randomize_part(G, n_shift);
                 res = (source + r) >> n_shift;
 #endif
 #endif
             }
+    }
+
+    void cisc(SubProcessor<T>& processor, const Instruction& instruction)
+    {
+        int r0 = instruction.get_r(0);
+        string tag((char*)&r0, 4);
+        auto& args = instruction.get_start();
+        if (tag == string("LTZ\0", 4))
+        {
+            for (size_t i = 0; i < args.size(); i += args[i])
+            {
+                assert(i + args[i] <= args.size());
+                assert(args[i] == 6);
+                for (int j = 0; j < args[i + 1]; j++)
+                {
+                    auto& res = processor.get_S()[args[i + 2] + j];
+                    res = T(processor.get_S()[args[i + 3] + j]).get_bit(
+                            args[i + 4] - 1);
+                }
+            }
+        }
+        else if (tag == "Trun")
+        {
+            for (size_t i = 0; i < args.size(); i += args[i])
+            {
+                assert(i + args[i] <= args.size());
+                assert(args[i] == 8);
+                int k = args[i + 4];
+                int m = args[i + 5];
+                int s = args[i + 7];
+                assert((s == 0) or (s == 1));
+                for (int j = 0; j < args[i + 1]; j++)
+                {
+                    auto& res = processor.get_S()[args[i + 2] + j];
+                    res = ((T(processor.get_S()[args[i + 3] + j])
+                            + (T(s) << (k - 1))) >> m) - (T(s) << (k - m - 1));
+                }
+            }
+        }
+        else
+            throw runtime_error("unknown CISC instruction: " + tag);
     }
 };
 

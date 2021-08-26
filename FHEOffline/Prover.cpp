@@ -1,9 +1,12 @@
 
 #include "Prover.h"
+#include "Verifier.h"
 
 #include "FHE/P2Data.h"
 #include "Tools/random.h"
 #include "Math/Z2k.hpp"
+#include "Math/modp.hpp"
+#include "FHE/AddableVector.hpp"
 
 
 template <class FD, class U>
@@ -13,20 +16,20 @@ Prover<FD,U>::Prover(Proof& proof, const FD& FieldD) :
   s.resize(proof.V, proof.pk->get_params());
   y.resize(proof.V, FieldD);
 #ifdef LESS_ALLOC_MORE_MEM
-  s.allocate_slots(bigint(1) << proof.B_rand_length);
-  y.allocate_slots(bigint(1) << proof.B_plain_length);
   t = s[0];
   z = y[0];
   // extra limb to prevent reallocation
   t.allocate_slots(bigint(1) << (proof.B_rand_length + 64));
   z.allocate_slots(bigint(1) << (proof.B_plain_length + 64));
+  s.allocate_slots(bigint(1) << proof.B_rand_length);
+  y.allocate_slots(bigint(1) << proof.B_plain_length);
 #endif
 }
 
 template <class FD, class U>
 void Prover<FD,U>::Stage_1(const Proof& P, octetStream& ciphertexts,
     const AddableVector<Ciphertext>& c,
-    const FHE_PK& pk, bool Diag, bool binary)
+    const FHE_PK& pk)
 {
   size_t allocate = 3 * c.size() * c[0].report_size(USED);
   ciphertexts.resize_precise(allocate);
@@ -49,7 +52,9 @@ void Prover<FD,U>::Stage_1(const Proof& P, octetStream& ciphertexts,
 //      AE.randomize(Diag,binary);
 //      rd=RandPoly(phim,bd<<1);
 //      y[i]=AE.plaintext()+pr*rd;
-      y[i].randomize(G, P.B_plain_length, Diag, binary);
+      y[i].randomize(G, P.B_plain_length, P.get_diagonal());
+      if (P.get_diagonal())
+        assert(y[i].is_diagonal());
       s[i].resize(3, P.phim);
       s[i].generateUniform(G, P.B_rand_length);
       rc.assign(s[i][0], s[i][1], s[i][2]);
@@ -72,15 +77,19 @@ bool Prover<FD,U>::Stage_2(Proof& P, octetStream& cleartexts,
 
   unsigned int i;
 #ifndef LESS_ALLOC_MORE_MEM
-  AddableVector<fixint<GFP_MOD_SZ>> z;
-  AddableMatrix<fixint<GFP_MOD_SZ>> t;
+  AddableVector<fixint<gfp::N_LIMBS>> z;
+  AddableMatrix<fixint<gfp::N_LIMBS>> t;
 #endif
   cleartexts.reset_write_head();
   cleartexts.store(P.V);
+  if (P.get_diagonal())
+    for (auto& xx : x)
+      assert(xx.is_diagonal());
   for (i=0; i<P.V; i++)
     { z=y[i];
       t=s[i];
       P.apply_challenge(i, z, x, pk);
+      Check_Decoding(z, P.get_diagonal(), x[0].get_field());
       P.apply_challenge(i, t, r, pk);
       if (not P.check_bounds(z, t, i))
           return false;
@@ -106,8 +115,7 @@ size_t Prover<FD,U>::NIZKPoK(Proof& P, octetStream& ciphertexts, octetStream& cl
                         const FHE_PK& pk,
                         const AddableVector<Ciphertext>& c,
                         const vector<U>& x,
-                        const Proof::Randomness& r,
-                        bool Diag,bool binary)
+                        const Proof::Randomness& r)
 {
 //  AElement<T> AE;
 //  for (i=0; i<P.sec; i++)
@@ -122,13 +130,15 @@ size_t Prover<FD,U>::NIZKPoK(Proof& P, octetStream& ciphertexts, octetStream& cl
   int cnt=0;
   while (!ok)
     { cnt++;
-      Stage_1(P,ciphertexts,c,pk,Diag,binary);
+      Stage_1(P,ciphertexts,c,pk);
       P.set_challenge(ciphertexts);
       // Check check whether we are OK, or whether we should abort
       ok = Stage_2(P,cleartexts,x,r,pk);
     }
+#ifdef VERBOSE
   if (cnt > 1)
       cout << "\t\tNumber iterations of prover = " << cnt << endl;
+#endif
   return report_size(CAPACITY) + volatile_memory;
 }
 

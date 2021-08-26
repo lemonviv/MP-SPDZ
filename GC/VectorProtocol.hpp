@@ -3,6 +3,9 @@
  *
  */
 
+#ifndef GC_VECTORPROTOCOL_HPP_
+#define GC_VECTORPROTOCOL_HPP_
+
 #include "VectorProtocol.h"
 
 namespace GC
@@ -10,7 +13,7 @@ namespace GC
 
 template<class T>
 VectorProtocol<T>::VectorProtocol(Player& P) :
-        part_protocol(P)
+        part_protocol(P), P(P)
 {
 }
 
@@ -33,7 +36,7 @@ typename T::clear VectorProtocol<T>::prepare_mul(const T& x,
         const T& y, int n)
 {
     for (int i = 0; i < n; i++)
-        part_protocol.prepare_mul(x.get_reg(i), y.get_reg(i));
+        part_protocol.prepare_mul(x.get_reg(i), y.get_reg(i), 1);
     return {};
 }
 
@@ -47,10 +50,18 @@ template<class T>
 T VectorProtocol<T>::finalize_mul(int n)
 {
     T res;
-    res.resize_regs(n);
-    for (int i = 0; i < n; i++)
-        res.get_reg(i) = part_protocol.finalize_mul();
+    finalize_mult(res, n);
     return res;
 }
 
+template<class T>
+void VectorProtocol<T>::finalize_mult(T& res, int n)
+{
+    res.resize_regs(n);
+    for (int i = 0; i < n; i++)
+        res.get_reg(i) = part_protocol.finalize_mul(1);
+}
+
 } /* namespace GC */
+
+#endif

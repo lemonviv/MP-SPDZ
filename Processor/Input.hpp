@@ -103,7 +103,7 @@ void Input<T>::add_mine(const open_type& input, int n_bits)
 }
 
 template<class T>
-void Input<T>::add_other(int player)
+void Input<T>::add_other(int player, int)
 {
     open_type t;
     shares.at(player).push_back({});
@@ -123,7 +123,7 @@ void InputBase<T>::add_from_all(const clear& input)
 template<class T>
 void Input<T>::send_mine()
 {
-    P.send_all(this->os[P.my_num()], true);
+    P.send_all(this->os[P.my_num()]);
 }
 
 template<class T>
@@ -133,7 +133,7 @@ void InputBase<T>::exchange()
         if (i == P->my_num())
             send_mine();
         else
-            P->receive_player(i, os[i], true);
+            P->receive_player(i, os[i]);
 }
 
 template<class T>
@@ -327,7 +327,7 @@ void InputBase<T>::input_mixed(SubProcessor<T>& Proc, const vector<int>& args,
         X(IntInput<typename T::clear>) X(FixInput) X(FloatInput)
 #undef X
         default:
-            throw runtime_error("unknown input type: " + to_string(type));
+            throw unknown_input_type(type);
         }
         i += n_arg_tuple;
         last_type = type;
@@ -351,7 +351,7 @@ void InputBase<T>::input_mixed(SubProcessor<T>& Proc, const vector<int>& args,
         X(IntInput<typename T::clear>) X(FixInput) X(FloatInput)
 #undef X
         default:
-            throw runtime_error("unknown input type: " + to_string(type));
+            throw unknown_input_type(type);
         }
         i += n_arg_tuple;
     }

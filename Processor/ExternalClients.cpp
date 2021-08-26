@@ -23,6 +23,8 @@ ExternalClients::~ExternalClients()
   {
     delete it->second;
   }
+  if (ctx)
+    delete ctx;
 }
 
 void ExternalClients::start_listening(int portnum_base)
@@ -30,7 +32,7 @@ void ExternalClients::start_listening(int portnum_base)
   client_connection_servers[portnum_base] = new AnonymousServerSocket(portnum_base + get_party_num());
   client_connection_servers[portnum_base]->init();
   cerr << "Start listening on thread " << this_thread::get_id() << endl;
-  cerr << "Party " << get_party_num() << " is listening on port " << (portnum_base + get_party_num()) 
+  cerr << "Party " << get_party_num() << " is listening on port " << (portnum_base + get_party_num())
         << " for external client connections." << endl;
 }
 
@@ -40,7 +42,7 @@ int ExternalClients::get_client_connection(int portnum_base)
   if (it == client_connection_servers.end())
   {
     cerr << "Thread " << this_thread::get_id() << " didn't find server." << endl; 
-    return -1;
+    throw runtime_error("No connection on port " + to_string(portnum_base));
   }
   cerr << "Thread " << this_thread::get_id() << " found server." << endl; 
   int client_id, socket;

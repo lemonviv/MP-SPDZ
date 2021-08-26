@@ -31,6 +31,15 @@ void HemiPrep<T>::basic_setup(Player& P)
     auto& machine = *pairwise_machine;
     auto& setup = machine.setup<FD>();
     setup.secure_init(P, machine, T::clear::length(), 40);
+    T::clear::template init<typename FD::T>();
+}
+
+
+template<class T>
+HemiPrep<T>::~HemiPrep()
+{
+    for (auto& x : multipliers)
+        delete x;
 }
 
 template<class T>
@@ -63,7 +72,7 @@ void HemiPrep<T>::buffer_triples()
     c.mul(a, b);
     Bundle<octetStream> bundle(P);
     pairwise_machine->pk.encrypt(a).pack(bundle.mine);
-    P.Broadcast_Receive(bundle, true);
+    P.unchecked_broadcast(bundle);
     Ciphertext C(pairwise_machine->pk);
     for (auto m : multipliers)
     {
@@ -75,13 +84,6 @@ void HemiPrep<T>::buffer_triples()
     for (unsigned i = 0; i < a.num_slots(); i++)
         this->triples.push_back(
         {{ a.element(i), b.element(i), c.element(i) }});
-}
-
-template<class T>
-void HemiPrep<T>::buffer_inverses()
-{
-    assert(this->proc != 0);
-    ::buffer_inverses(this->inverses, *this, this->proc->MC, this->proc->P);
 }
 
 #endif

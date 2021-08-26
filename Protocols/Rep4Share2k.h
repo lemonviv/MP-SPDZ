@@ -7,7 +7,6 @@
 #define PROTOCOLS_REP4SHARE2K_H_
 
 #include "Rep4Share.h"
-#include "Processor/NoLivePrep.h"
 #include "Processor/DummyProtocol.h"
 #include "GC/square64.h"
 
@@ -32,6 +31,9 @@ public:
     typedef ::PrivateOutput<This> PrivateOutput;
     typedef Rep4RingOnlyPrep<This> LivePrep;
 
+    static const bool has_trunc_pr = true;
+    static const bool has_split = true;
+
     Rep4Share2()
     {
     }
@@ -41,8 +43,19 @@ public:
     }
 
     template<class U>
-    static void split(vector<U>& dest, const vector<int>& regs,
-            int n_bits, const Rep4Share2* source, int n_inputs, Player& P)
+    static void split(vector<U>& dest, const vector<int>& regs, int n_bits,
+            const Rep4Share2* source, int n_inputs, Rep4<U>& protocol)
+    {
+        int n_split = regs.size() / n_bits;
+        if (n_split == 2)
+            protocol.split(dest, regs, n_bits, source, n_inputs);
+        else
+            split(dest, regs, n_bits, source, n_inputs, protocol.P);
+    }
+
+    template<class U>
+    static void split(vector<U>& dest, const vector<int>& regs, int n_bits,
+            const Rep4Share2* source, int n_inputs, Player& P)
     {
         int my_num = P.my_num();
         assert(n_bits <= 64);

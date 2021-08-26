@@ -37,6 +37,7 @@ class FlexBuffer;
 class octetStream
 {
   friend class FlexBuffer;
+  template<class T> friend class Exchanger;
 
   size_t len,mxlen,ptr;  // len is the "write head", ptr is the "read head"
   octet *data;
@@ -146,7 +147,9 @@ class octetStream
   template <class T>
   void store(const vector<T>& v);
   template <class T>
-  void get(vector<T>& v);
+  void get(vector<T>& v, const T& init = {});
+  template <class T>
+  void get_no_resize(vector<T>& v);
 
   void consume(octetStream& s,size_t l)
     { s.resize(l);
@@ -158,8 +161,6 @@ class octetStream
   void Send(T socket_num) const;
   template<class T>
   void Receive(T socket_num);
-  template<class T>
-  void ReceiveExpected(T socket_num, size_t expected);
 
   void input(istream& s);
   void output(ostream& s);
@@ -171,6 +172,17 @@ class octetStream
 
   friend ostream& operator<<(ostream& s,const octetStream& o);
   friend class PRNG;
+};
+
+class Player;
+
+class octetStreams : public vector<octetStream>
+{
+public:
+  octetStreams() {}
+  octetStreams(const Player& P);
+
+  void reset(const Player& P);
 };
 
 
@@ -297,25 +309,6 @@ inline void octetStream::Receive(T socket_num)
 }
 
 template<class T>
-inline void octetStream::ReceiveExpected(T socket_num, size_t expected)
-{
-  size_t nlen = 0;
-  receive(socket_num, nlen, LENGTH_SIZE);
-
-  if (nlen != expected) {
-      cerr << "octetStream::ReceiveExpected: got " << nlen <<
-              " length, expected " << expected << endl;
-      throw bad_value();
-  }
-
-  len=0;
-  resize(nlen);
-  len=nlen;
-
-  receive(socket_num,data,len);
-}
-
-template<class T>
 void octetStream::store(const T& x)
 {
     x.pack(*this);
@@ -350,11 +343,22 @@ void octetStream::store(const vector<T>& v)
 }
 
 template<class T>
-void octetStream::get(vector<T>& v)
+void octetStream::get(vector<T>& v, const T& init)
 {
   size_t size;
   get(size);
-  v.resize(size);
+  v.resize(size, init);
+  for (auto& x : v)
+    get(x);
+}
+
+template<class T>
+void octetStream::get_no_resize(vector<T>& v)
+{
+  size_t size;
+  get(size);
+  if (size != v.size())
+    throw runtime_error("wrong vector length");
   for (auto& x : v)
     get(x);
 }

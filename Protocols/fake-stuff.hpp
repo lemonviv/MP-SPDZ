@@ -174,12 +174,24 @@ void make_share(FixedVec<T, 3>* Sa, const V& a, int N, const U& key, PRNG& G)
     }
 }
 
+template<class T>
+class VanderStore
+{
+public:
+  static vector<vector<T>> vandermonde;
+};
+
+template<class T>
+vector<vector<T>> VanderStore<T>::vandermonde;
+
 template<class T, class V>
 void make_share(ShamirShare<T>* Sa, const V& a, int N,
     const typename ShamirShare<T>::mac_type&, PRNG& G)
 {
   insecure("share generation", false);
-  const auto& vandermonde = ShamirInput<ShamirShare<T>>::get_vandermonde(N / 2, N);
+  auto& vandermonde = VanderStore<T>::vandermonde;
+  if (vandermonde.empty())
+      vandermonde = ShamirInput<ShamirShare<T>>::get_vandermonde(N / 2, N);
   vector<T> randomness(N / 2);
   for (auto& x : randomness)
       x.randomize(G);
@@ -187,8 +199,8 @@ void make_share(ShamirShare<T>* Sa, const V& a, int N,
   {
       auto& share = Sa[i];
       share = a;
-      for (int j = 0; j < N / 2; j++)
-          share += vandermonde[i][j] * randomness[j];
+      for (int j = 0; j < ShamirOptions::singleton.threshold; j++)
+          share += vandermonde.at(i).at(j) * randomness[j];
   }
 }
 
@@ -199,17 +211,17 @@ void check_share(vector<Share<T> >& Sa,
   int N,
   const T& key)
 {
-  value.assign(0);
-  mac.assign(0);
+  value = (0);
+  mac = (0);
 
   for (int i=0; i<N; i++)
     {
-      value.add(Sa[i].get_share());
-      mac.add(Sa[i].get_mac());
+      value += (Sa[i].get_share());
+      mac += (Sa[i].get_mac());
     }
 
   V res;
-  res.mul(value, key);
+  res = value * key;
   if (res != mac)
     {
       cout << "Value:      " << value << endl;
@@ -238,7 +250,6 @@ void check_share(vector<T>& Sa, typename T::clear& value,
       if (a != b)
       {
         cout << a << " != " << b << endl;
-        cout << hex << a.debug() << " != " << b.debug() << endl;
         for (int i = 0; i < N; i++)
           cout << Sa[i] << endl;
         throw bad_value("invalid replicated secret sharing");
@@ -266,6 +277,13 @@ void write_mac_key(const string& directory, int i, int nplayers, U key)
   outf << nplayers << endl;
   key.output(outf,true);
   outf.close();
+}
+
+template <class T>
+void write_mac_key(const Names& N, typename T::mac_key_type key)
+{
+  write_mac_key(get_prep_sub_dir<T>(N.num_players()), N.my_num(),
+      N.num_players(), key);
 }
 
 template <class T>
@@ -307,6 +325,27 @@ void read_mac_key(const string& directory, int player_num, int nplayers, U& key)
   inpf.close();
 }
 
+template<class T>
+inline typename T::mac_key_type read_generate_write_mac_key(const Player& P,
+        string directory)
+{
+  if (directory == "")
+    directory = get_prep_sub_dir<T>(P.num_players());
+  typename T::mac_key_type res;
+
+  try
+  {
+      read_mac_key(directory, P.my_num(), P.num_players(), res);
+  }
+  catch (mac_key_error&)
+  {
+      T::read_or_generate_mac_key(directory, P, res);
+      write_mac_key(directory, P.my_num(), P.num_players(), res);
+  }
+
+  return res;
+}
+
 template <class U>
 void read_global_mac_key(const string& directory, int nparties, U& key)
 {
@@ -317,7 +356,7 @@ void read_global_mac_key(const string& directory, int nparties, U& key)
     {
       read_mac_key(directory, i, nparties, pp);
       cout << " Key " << i << ": " << pp << endl;
-      key.add(pp);
+      key += pp;
     }
 
   cout << "--------------\n";
@@ -452,6 +491,8 @@ template<class T>
 void make_mult_triples(const typename T::mac_type& key, int N, int ntrip,
     bool zero, string prep_data_prefix, int thread_num = -1)
 {
+  T::clear::write_setup(get_prep_sub_dir<T>(prep_data_prefix, N));
+
   PRNG G;
   G.ReSeed();
 
@@ -460,12 +501,13 @@ void make_mult_triples(const typename T::mac_type& key, int N, int ntrip,
   vector<T> Sa(N),Sb(N),Sc(N);
   /* Generate Triples */
   for (int i=0; i<N; i++)
-    { stringstream filename;
-      filename << get_prep_sub_dir<T>(prep_data_prefix, N) << "Triples-" << T::type_short() << "-P" << i
-          << Sub_Data_Files<T>::get_suffix(thread_num);
-      cout << "Opening " << filename.str() << endl;
-      outf[i].open(filename.str().c_str(),ios::out | ios::binary);
-      if (outf[i].fail()) { throw file_error(filename.str().c_str()); }
+    {
+      string filename = PrepBase::get_filename(
+          get_prep_sub_dir<T>(prep_data_prefix, N), DATA_TRIPLE,
+          T::type_short(), i, thread_num);
+      cout << "Opening " << filename << endl;
+      outf[i].open(filename,ios::out | ios::binary);
+      if (outf[i].fail()) { throw file_error(filename); }
     }
   for (int i=0; i<ntrip; i++)
     {
@@ -475,7 +517,7 @@ void make_mult_triples(const typename T::mac_type& key, int N, int ntrip,
       if (!zero)
         b.randomize(G);
       make_share(Sb,b,N,key,G);
-      c.mul(a,b);
+      c = a * b;
       make_share(Sc,c,N,key,G);
       for (int j=0; j<N; j++)
         { Sa[j].output(outf[j],false);
@@ -521,8 +563,7 @@ void make_inverse(const typename T::mac_type& key, int N, int ntrip, bool zero,
           a.randomize(G);
         while (a.is_zero());
       make_share(Sa,a,N,key,G);
-      b=a; b.invert();
-      make_share(Sb,b,N,key,G);
+      make_share(Sb,a.invert(),N,key,G);
       for (int j=0; j<N; j++)
         { Sa[j].output(outf[j],false);
           Sb[j].output(outf[j],false);

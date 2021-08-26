@@ -1,6 +1,6 @@
 
 #include "Tools/Subroutines.h"
-#include "Exceptions/Exceptions.h"
+#include "Tools/Exceptions.h"
 #include "Tools/random.h"
 
 #include "EncCommit.h"
@@ -10,6 +10,8 @@
 
 #include <fstream>
 using namespace std;
+
+#include "Math/modp.hpp"
 
 // XXXX File_prefix is only used for active code
 #ifndef file_prefix

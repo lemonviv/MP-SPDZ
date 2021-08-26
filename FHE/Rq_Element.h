@@ -44,7 +44,6 @@ protected:
   void assign_zero(const vector<FFT_Data>& prd);
   void assign_zero(); 
   void assign_one(); 
-  void assign(const Rq_Element& e);
   void partial_assign(const Rq_Element& e);
 
   // Must be careful not to call by mistake
@@ -66,6 +65,9 @@ protected:
   Rq_Element(const Ring_Element& b0,const Ring_Element& b1) :
     a({b0, b1}), lev(n_mults()) {}
 
+  Rq_Element(const Ring_Element& b0) :
+    a({b0}), lev(n_mults()) {}
+
   template<class T, class FD, class S>
   Rq_Element(const FHE_Params& params, const Plaintext<T, FD, S>& plaintext) :
       Rq_Element(params)
@@ -73,9 +75,14 @@ protected:
     from(plaintext.get_iterator());
   }
 
-  // Destructor
-  ~Rq_Element()
-     { ; }
+  template<class U, class V>
+  Rq_Element(const vector<FFT_Data>& prd, const vector<U>& b0,
+      const vector<V>& b1, RepType r = evaluation) :
+      Rq_Element(prd, r, r)
+  {
+    a[0] = Ring_Element(prd[0], r, b0);
+    a[1] = Ring_Element(prd[1], r, b1);
+  }
 
   const Ring_Element& get(int i) const { return a[i]; }
 
@@ -107,6 +114,7 @@ protected:
   void Scale(const bigint& p);
 
   bool equals(const Rq_Element& a) const;
+  bool operator==(const Rq_Element& a) const { return equals(a); }
   bool operator!=(const Rq_Element& a) const { return !equals(a); }
 
   int level() const { return lev; }
@@ -118,8 +126,6 @@ protected:
   void partial_assign(const Rq_Element& a, const Rq_Element& b);
 
   // Converting to and from a vector of bigint's Again I/O is in poly rep
-  void from_vec(const vector<bigint>& v,int level=-1);
-  void from_vec(const vector<int>& v,int level=-1);
   vector<bigint>  to_vec_bigint() const;
   void to_vec_bigint(vector<bigint>& v) const;
 

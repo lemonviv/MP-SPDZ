@@ -16,7 +16,7 @@
   #define SEED_SIZE   randombytes_SEEDBYTES
   #define RAND_SIZE   480
 #else
-#ifdef __AES__
+#if defined(__AES__) || !defined(__x86_64__)
   #define PIPELINES   8
 #else
   #define PIPELINES   1
@@ -44,7 +44,7 @@ class PRNG
    octet random[RAND_SIZE] __attribute__((aligned (16)));
 
    #ifdef USE_AES
-#ifdef __AES__
+#if defined(__AES__) || !defined(__x86_64__)
      bool useC;
 #else
      const static bool useC = true;
@@ -77,6 +77,7 @@ class PRNG
 
    // Agree securely on seed
    void SeedGlobally(const PlayerBase& P);
+   void SeedGlobally(const Player& P, bool secure = true);
 
    // Set seed from array
    void SetSeed(const unsigned char*);
@@ -153,7 +154,7 @@ inline bool PRNG::get_bit()
       n_cached_bits = 64;
     }
   n_cached_bits--;
-  return (cached_bits >>= 1) & 1;
+  return (cached_bits >> n_cached_bits) & 1;
 }
 
 inline unsigned char PRNG::get_uchar()
@@ -201,6 +202,30 @@ inline void PRNG::get_octets(octet* ans)
    }
    else
      get_octets(ans, L);
+}
+
+template<int N_BYTES>
+inline void PRNG::randomBnd(mp_limb_t* res, const mp_limb_t* B, mp_limb_t mask)
+{
+  size_t n_limbs = (N_BYTES + sizeof(mp_limb_t) - 1) / sizeof(mp_limb_t);
+  do
+    {
+      get_octets<N_BYTES>((octet*) res);
+      res[n_limbs - 1] &= mask;
+    }
+  while (mpn_cmp(res, B, n_limbs) >= 0);
+}
+
+template<>
+inline octet PRNG::get()
+{
+  return get_uchar();
+}
+
+template<>
+inline word PRNG::get()
+{
+  return get_word();
 }
 
 #endif

@@ -24,22 +24,25 @@ class Proof
 {
   unsigned int sec;
 
+  bool diagonal;
+
   Proof();   // Private to avoid default 
 
   public:
 
   typedef AddableVector< Int_Random_Coins > Randomness;
+  typedef typename FFT_Data::poly_type bound_type;
 
   class Preimages
   {
     typedef Int_Random_Coins::value_type::value_type r_type;
 
-    fixint<GFP_MOD_SZ> m_tmp;
+    bound_type m_tmp;
     AddableVector<r_type> r_tmp;
 
   public:
     Preimages(int size, const FHE_PK& pk, const bigint& p, int n_players);
-    AddableMatrix<fixint<GFP_MOD_SZ>> m;
+    AddableMatrix<bound_type> m;
     Randomness r;
     void add(octetStream& os);
     void pack(octetStream& os);
@@ -67,8 +70,12 @@ class Proof
   static double dist;
 
   protected:
+    typedef AddableVector<bound_type> T;
+    typedef AddableMatrix<typename Int_Random_Coins::rand_type> X;
+
     Proof(int sc, const bigint& Tau, const bigint& Rho, const FHE_PK& pk,
-            int n_proofs = 1) :
+            int n_proofs = 1, bool diagonal = false) :
+              diagonal(diagonal),
               B_plain_length(0), B_rand_length(0), pk(&pk), n_proofs(n_proofs)
     { sec=sc;
       tau=Tau; rho=Rho;
@@ -91,31 +98,37 @@ class Proof
         }
     }
 
-  Proof(int sec, const FHE_PK& pk, int n_proofs = 1) :
+  Proof(int sec, const FHE_PK& pk, int n_proofs = 1, bool diagonal = false) :
       Proof(sec, pk.p() / 2,
           pk.get_params().get_DG().get_NewHopeB(), pk,
-          n_proofs) {}
+          n_proofs, diagonal) {}
 
   virtual ~Proof() {}
 
   public:
   static bigint slack(int slack, int sec, int phim);
 
-  static bool use_top_gear(const FHE_PK& pk)
+  bool use_top_gear(const FHE_PK& pk)
   {
-    return CowGearOptions::singleton.top_gear() and pk.p() > 2;
+    return CowGearOptions::singleton.top_gear() and pk.p() > 2 and
+        not diagonal;
   }
 
-  static int n_ciphertext_per_proof(int sec, const FHE_PK& pk)
+  bool get_diagonal() const
   {
-    return Proof(sec, pk, 1).U;
+    return diagonal;
+  }
+
+  static int n_ciphertext_per_proof(int sec, const FHE_PK& pk, bool diagonal =
+      false)
+  {
+    return Proof(sec, pk, 1, diagonal).U;
   }
 
   void set_challenge(const octetStream& ciphertexts);
   void set_challenge(PRNG& G);
   void generate_challenge(const Player& P);
 
-  template <class T, class X>
   bool check_bounds(T& z, X& t, int i) const;
 
   template<class T, class U>
@@ -144,8 +157,8 @@ public:
   { return bigint(phim * sec * sec) << (sec / 2 + 8); }
 
   NonInteractiveProof(int sec, const FHE_PK& pk,
-      int extra_slack) :
-      Proof(sec, pk, 1)
+      int extra_slack, bool diagonal = false) :
+      Proof(sec, pk, 1, diagonal)
   {
     bigint B;
     B=128*sec*sec;
@@ -164,8 +177,8 @@ public:
   { (void)phim; return pow(2, 1.5 * sec + 1); }
 
   InteractiveProof(int sec, const FHE_PK& pk,
-      int n_proofs = 1) :
-      Proof(sec, pk, n_proofs)
+      int n_proofs = 1, bool diagonal = false) :
+      Proof(sec, pk, n_proofs, diagonal)
   {
     bigint B;
     B = bigint(1) << sec;

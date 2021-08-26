@@ -7,10 +7,10 @@
 #include "GC/TinierSecret.h"
 #include "GC/ShareParty.h"
 #include "GC/TinyMC.h"
+#include "GC/VectorInput.h"
 
 #include "GC/ShareParty.hpp"
 #include "GC/ShareSecret.hpp"
-#include "GC/Instruction.hpp"
 #include "GC/Machine.hpp"
 #include "GC/Processor.hpp"
 #include "GC/Program.hpp"
@@ -18,6 +18,8 @@
 #include "GC/ThreadMaster.hpp"
 #include "GC/Secret.hpp"
 #include "GC/TinyPrep.hpp"
+#include "GC/CcdPrep.hpp"
+#include "GC/TinierSharePrep.hpp"
 
 #include "Processor/Instruction.hpp"
 #include "Protocols/MAC_Check.hpp"
@@ -27,5 +29,5 @@
 
 int main(int argc, const char** argv)
 {
-    GC::ShareParty<GC::TinySecret<40>>(argc, argv, 1000);
+    GC::simple_binary_main<GC::TinySecret<40>>(argc, argv, 1000);
 }

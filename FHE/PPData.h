@@ -3,9 +3,10 @@
 
 #include "Math/modp.h"
 #include "Math/Zp_Data.h"
-#include "Math/gfp.h"
+#include "Math/gfpvar.h"
 #include "Math/fixint.h"
 #include "FHE/Ring.h"
+#include "FHE/FFT_Data.h"
 
 /* Class for holding modular arithmetic data wrt the ring 
  *
@@ -15,9 +16,9 @@
 class PPData
 {
   public:
-  typedef gf2n_short T;
+  typedef gfp T;
   typedef bigint S;
-  typedef fixint<GFP_MOD_SZ> poly_type;
+  typedef typename FFT_Data::poly_type poly_type;
 
   Ring    R;
   Zp_Data prData;
@@ -26,17 +27,9 @@ class PPData
   
   void init(const Ring& Rg,const Zp_Data& PrD);
 
-  void assign(const PPData& PPD);
-
   PPData() { ; }
-  PPData(const PPData& PPD)
-    { assign(PPD); }
   PPData(const Ring& Rg,const Zp_Data& PrD)
     { init(Rg,PrD); }
-  PPData& operator=(const PPData& PPD)
-    { if (this!=&PPD) { assign(PPD); }
-      return *this;
-    }
 
   const Zp_Data& get_prD() const   { return prData; }
   const bigint&  get_prime() const { return prData.pr; }

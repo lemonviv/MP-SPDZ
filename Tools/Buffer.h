@@ -8,6 +8,7 @@
 
 #include <fstream>
 #include <iostream>
+#include <assert.h>
 using namespace std;
 
 #include "Math/field_types.h"
@@ -37,13 +38,14 @@ public:
             tuple_length(-1), eof(false) {}
     ~BufferBase() {}
     virtual ifstream* open() = 0;
-    void setup(ifstream* f, int length, string filename, const char* type = "",
-            const char* field = "");
+    void setup(ifstream* f, int length, const string& filename,
+            const char* type = "", const string& field = {});
     void seekg(int pos);
     bool is_up() { return file != 0; }
     void try_rewind();
     void prune();
     void purge();
+    void check_tuple_length(int tuple_length);
 };
 
 
@@ -72,15 +74,35 @@ public:
     {
     }
 
+    BufferOwner(const BufferOwner& other) :
+            file(0)
+    {
+        assert(other.file == 0);
+    }
+
+    ~BufferOwner()
+    {
+        close();
+    }
+
     ifstream* open()
     {
         file = new ifstream(this->filename, ios::in | ios::binary);
         return file;
     }
 
-    void setup(string filename, int tuple_length, const char* data_type = "")
+    void setup(const string& filename, int tuple_length,
+            const char* data_type = "")
     {
-        Buffer<U, V>::setup(file, tuple_length, filename, data_type, U::type_string().c_str());
+        Buffer<U, V>::setup(file, tuple_length, filename, data_type,
+              U::type_string());
+    }
+
+    void setup(const string& filename, int tuple_length,
+            const string& type_string, const char* data_type = "")
+    {
+        Buffer<U, V>::setup(file, tuple_length, filename, data_type,
+                type_string);
     }
 
     void close()
@@ -94,9 +116,11 @@ public:
 template<class T, class U>
 inline Buffer<T, U>::~Buffer()
 {
+#ifdef VERBOSE
     if (timer.elapsed() && data_type.size())
         cerr << T::type_string() << " " << data_type << " reading: "
                 << timer.elapsed() << endl;
+#endif
 }
 
 template<class T, class U>

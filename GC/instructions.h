@@ -7,6 +7,7 @@
 #define GC_INSTRUCTIONS_H_
 
 #include "Tools/callgrind.h"
+#include "Instruction.h"
 
 #define PROC processor
 #define INST instruction
@@ -39,7 +40,7 @@
 
 #define BIT_INSTRUCTIONS \
     X(XORS, T::xors(PROC, EXTRA)) \
-    X(XORCB, C0.xor_(PC1, PC2)) \
+    X(XORCB, processor.xorc(instruction)) \
     X(XORCBI, C0.xor_(PC1, IMM)) \
     X(NOTS, processor.nots(INST)) \
     X(ANDRS, T::andrs(PROC, EXTRA)) \
@@ -135,6 +136,10 @@
     X(RUN_TAPE, MACH->run_tapes(EXTRA)) \
     X(JOIN_TAPE, MACH->join_tape(R0)) \
     X(USE, ) \
+    X(USE_INP, ) \
+    X(NPLAYERS, I0 = Thread<T>::s().P->num_players()) \
+    X(THRESHOLD, I0 = T::threshold(Thread<T>::s().P->num_players())) \
+    X(PLAYERID, I0 = Thread<T>::s().P->my_num()) \
 
 #define INSTRUCTIONS BIT_INSTRUCTIONS GC_INSTRUCTIONS
 

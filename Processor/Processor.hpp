@@ -29,6 +29,7 @@ SubProcessor<T>::SubProcessor(typename T::MAC_Check& MC,
 {
   DataF.set_proc(this);
   DataF.set_protocol(protocol);
+  protocol.init_mul(this);
   bit_usage.set_num_players(P.num_players());
   personal_bit_preps.resize(P.num_players());
   for (int i = 0; i < P.num_players(); i++)
@@ -38,6 +39,8 @@ SubProcessor<T>::SubProcessor(typename T::MAC_Check& MC,
 template<class T>
 SubProcessor<T>::~SubProcessor()
 {
+  protocol.check();
+
   for (size_t i = 0; i < personal_bit_preps.size(); i++)
     {
       auto& x = personal_bit_preps[i];
@@ -76,16 +79,20 @@ Processor<sint, sgf2n>::Processor(int thread_num,Player& P,
 {
   reset(program,0);
 
-  public_input.open(get_filename("Programs/Public-Input/",false).c_str());
+  public_input_filename = get_filename("Programs/Public-Input/",false);
+  public_input.open(public_input_filename);
   private_input_filename = (get_filename(PREP_DIR "Private-Input-",true));
   private_input.open(private_input_filename.c_str());
   public_output.open(get_filename(PREP_DIR "Public-Output-",true).c_str(), ios_base::out);
   private_output.open(get_filename(PREP_DIR "Private-Output-",true).c_str(), ios_base::out);
+  binary_output.open(
+      get_parameterized_filename(P.my_num(), thread_num,
+          PREP_DIR "Binary-Output"), ios_base::out);
 
   open_input_file(P.my_num(), thread_num, machine.opts.cmd_private_input_file);
 
   secure_prng.ReSeed();
-  shared_prng.SeedGlobally(P);
+  shared_prng.SeedGlobally(P, false);
 
   // only output on party 0 if not interactive
   bool output = P.my_num() == 0 or machine.opts.interactive;
@@ -133,14 +140,31 @@ string Processor<sint, sgf2n>::get_filename(const char* prefix, bool use_number)
 template<class sint, class sgf2n>
 void Processor<sint, sgf2n>::reset(const Program& program,int arg)
 {
-  reg_maxi = program.num_reg(INT);
   Proc2.get_S().resize(program.num_reg(SGF2N));
   Proc2.get_C().resize(program.num_reg(CGF2N));
   Procp.get_S().resize(program.num_reg(SINT));
   Procp.get_C().resize(program.num_reg(CINT));
-  Ci.resize(reg_maxi);
+  Ci.resize(program.num_reg(INT));
   this->arg = arg;
   Procb.reset(program);
+}
+
+template<class sint, class sgf2n>
+void Processor<sint, sgf2n>::check()
+{
+  // protocol check before last MAC check
+  Procp.protocol.check();
+  Proc2.protocol.check();
+  share_thread.protocol->check();
+
+  // MACCheck
+  MC2.Check(P);
+  MCp.Check(P);
+  share_thread.MC->Check(P);
+
+  //cout << num << " : Checking broadcast" << endl;
+  P.Check_Broadcast();
+  //cout << num << " : Broadcast checked "<< endl;
 }
 
 template<class sint, class sgf2n>
@@ -196,8 +220,8 @@ void Processor<sint, sgf2n>::convcintvec(const Instruction& instruction)
           int n_cols = min(n_bits - j * unit, unit);
           for (int k = 0; k < n_rows; k++)
             square.rows[k] =
-                Integer(Procp.C[instruction.get_r(0) + i * unit + k]
-                                >> (j * unit)).get();
+                Integer::convert_unsigned(
+                    Procp.C[instruction.get_r(0) + i * unit + k] >> (j * unit)).get();
           square.transpose(n_rows, n_cols);
           for (int k = 0; k < n_cols; k++)
             Procb.C[instruction.get_start()[k + j * unit] + i] = square.rows[k];
@@ -224,8 +248,9 @@ void Processor<sint, sgf2n>::split(const Instruction& instruction)
   assert(unit == 64);
   int n_inputs = instruction.get_size();
   int n_bits = instruction.get_start().size() / n;
+  assert(share_thread.protocol != 0);
   sint::split(Procb.S, instruction.get_start(), n_bits,
-      &read_Sp(instruction.get_r(0)), n_inputs, P);
+      &read_Sp(instruction.get_r(0)), n_inputs, *share_thread.protocol);
 }
 
 
@@ -237,7 +262,7 @@ void Processor<sint, sgf2n>::split(const Instruction& instruction)
 // If message_type is > 0, send message_type in bytes 0 - 3, to allow an external client to
 //  determine the data structure being sent in a message.
 template<class sint, class sgf2n>
-void Processor<sint, sgf2n>::write_socket(const RegType reg_type, const SecrecyType secrecy_type, const bool send_macs,
+void Processor<sint, sgf2n>::write_socket(const RegType reg_type,
                              int socket_id, int message_type, const vector<int>& registers)
 {
   int m = registers.size();
@@ -250,26 +275,23 @@ void Processor<sint, sgf2n>::write_socket(const RegType reg_type, const SecrecyT
 
   for (int i = 0; i < m; i++)
   {
-    if (reg_type == MODP && secrecy_type == SECRET) {
-      // Send vector of secret shares and optionally macs
-      if (send_macs)
-        get_Sp_ref(registers[i]).pack(socket_stream);
-      else
-        get_Sp_ref(registers[i]).pack(socket_stream,
-            sint::get_rec_factor(P.my_num(), P.num_players()));
+    if (reg_type == SINT) {
+      // Send vector of secret shares
+      get_Sp_ref(registers[i]).pack(socket_stream,
+          sint::get_rec_factor(P.my_num(), P.num_players()));
     }
-    else if (reg_type == MODP && secrecy_type == CLEAR) {
+    else if (reg_type == CINT) {
       // Send vector of clear public field elements
       get_Cp_ref(registers[i]).pack(socket_stream);
     }
-    else if (reg_type == INT && secrecy_type == CLEAR) {
+    else if (reg_type == INT) {
       // Send vector of 32-bit clear ints
       socket_stream.store((int&)get_Ci_ref(registers[i]));
     } 
     else {
       stringstream ss;
       ss << "Write socket instruction with unknown reg type " << reg_type << 
-        " and secrecy type " << secrecy_type << "." << endl;      
+        "." << endl;
       throw Processor_Error(ss.str());
     }
   }
@@ -360,8 +382,11 @@ void Processor<sint, sgf2n>::read_shares_from_file(int start_file_posn, int end_
 // Append share data in data_registers to end of file. Expects Persistence directory to exist.
 template<class sint, class sgf2n>
 void Processor<sint, sgf2n>::write_shares_to_file(const vector<int>& data_registers) {
+  string dir = "Persistence";
+  mkdir_p(dir.c_str());
+
   string filename;
-  filename = "Persistence/Transactions-P" + to_string(P.my_num()) + ".data";
+  filename = dir + "/Transactions-P" + to_string(P.my_num()) + ".data";
 
   unsigned int size = data_registers.size();
 
@@ -551,49 +576,103 @@ void SubProcessor<T>::conv2ds(const Instruction& instruction)
     int n_channels_in = args[8];
     int padding_h = args[9];
     int padding_w = args[10];
-    int r0 = instruction.get_r(0);
-    int r1 = instruction.get_r(1);
+    int batch_size = args[11];
+    size_t r0 = instruction.get_r(0);
+    size_t r1 = instruction.get_r(1);
     int r2 = instruction.get_r(2);
-    int lengths[output_h][output_w];
+    int lengths[batch_size][output_h][output_w];
     memset(lengths, 0, sizeof(lengths));
+    int filter_stride_h = 1;
+    int filter_stride_w = 1;
+    if (stride_h < 0)
+    {
+        filter_stride_h = -stride_h;
+        stride_h = 1;
+    }
+    if (stride_w < 0)
+    {
+        filter_stride_w = -stride_w;
+        stride_w = 1;
+    }
 
-    for (int out_y = 0; out_y < output_h; out_y++)
-        for (int out_x = 0; out_x < output_w; out_x++)
-        {
-            int in_x_origin = (out_x * stride_w) - padding_w;
-            int in_y_origin = (out_y * stride_h) - padding_h;
-
-            for (int filter_y = 0; filter_y < weights_h; filter_y++)
+    for (int i_batch = 0; i_batch < batch_size; i_batch ++)
+    {
+        size_t base = r1 + i_batch * inputs_w * inputs_h * n_channels_in;
+        assert(base + inputs_w * inputs_h * n_channels_in <= S.size());
+        T* input_base = &S[base];
+        for (int out_y = 0; out_y < output_h; out_y++)
+            for (int out_x = 0; out_x < output_w; out_x++)
             {
-                int in_y = in_y_origin + filter_y;
-                if ((0 <= in_y) and (in_y < inputs_h))
-                    for (int filter_x = 0; filter_x < weights_w; filter_x++)
-                    {
-                        int in_x = in_x_origin + filter_x;
-                        if ((0 <= in_x) and (in_x < inputs_w))
-                        {
-                            for (int in_c = 0; in_c < n_channels_in; in_c++)
-                                protocol.prepare_dotprod(
-                                        S[r1 + (in_y * inputs_w + in_x) *
-                                          n_channels_in + in_c],
-                                        S[r2 + (filter_y * weights_w + filter_x) *
-                                          n_channels_in + in_c]);
-                            lengths[out_y][out_x] += n_channels_in;
-                        }
-                    }
-            }
+                int in_x_origin = (out_x * stride_w) - padding_w;
+                int in_y_origin = (out_y * stride_h) - padding_h;
 
-            protocol.next_dotprod();
-        }
+                for (int filter_y = 0; filter_y < weights_h; filter_y++)
+                {
+                    int in_y = in_y_origin + filter_y * filter_stride_h;
+                    if ((0 <= in_y) and (in_y < inputs_h))
+                        for (int filter_x = 0; filter_x < weights_w; filter_x++)
+                        {
+                            int in_x = in_x_origin + filter_x * filter_stride_w;
+                            if ((0 <= in_x) and (in_x < inputs_w))
+                            {
+                                T* pixel_base = &input_base[(in_y * inputs_w
+                                        + in_x) * n_channels_in];
+                                T* weight_base = &S[r2
+                                        + (filter_y * weights_w + filter_x)
+                                                * n_channels_in];
+                                for (int in_c = 0; in_c < n_channels_in; in_c++)
+                                    protocol.prepare_dotprod(pixel_base[in_c],
+                                            weight_base[in_c]);
+                                lengths[i_batch][out_y][out_x] += n_channels_in;
+                            }
+                        }
+                }
+
+                protocol.next_dotprod();
+            }
+    }
 
     protocol.exchange();
 
-    for (int out_y = 0; out_y < output_h; out_y++)
-        for (int out_x = 0; out_x < output_w; out_x++)
-        {
-            S[r0 + out_y * output_w + out_x] = protocol.finalize_dotprod(
-                    lengths[out_y][out_x]);
-        }
+    for (int i_batch = 0; i_batch < batch_size; i_batch ++)
+    {
+        size_t base = r0 + i_batch * output_h * output_w;
+        assert(base + output_h * output_w <= S.size());
+        T* output_base = &S[base];
+        for (int out_y = 0; out_y < output_h; out_y++)
+            for (int out_x = 0; out_x < output_w; out_x++)
+            {
+                output_base[out_y * output_w + out_x] =
+                        protocol.finalize_dotprod(
+                                lengths[i_batch][out_y][out_x]);
+            }
+    }
+}
+
+template<class T>
+void SubProcessor<T>::input_personal(const vector<int>& args)
+{
+  input.reset_all(P);
+  for (size_t i = 0; i < args.size(); i += 4)
+    for (int j = 0; j < args[i]; j++)
+      {
+        if (args[i + 1] == P.my_num())
+          input.add_mine(C[args[i + 3] + j]);
+        else
+          input.add_other(args[i + 1]);
+      }
+  input.exchange();
+  for (size_t i = 0; i < args.size(); i += 4)
+    for (int j = 0; j < args[i]; j++)
+      S[args[i + 2] + j] = input.finalize(args[i + 1]);
+}
+
+template<class sint, class sgf2n>
+typename sint::clear Processor<sint, sgf2n>::get_inverse2(unsigned m)
+{
+  for (unsigned i = inverses2m.size(); i <= m; i++)
+    inverses2m.push_back((cint(1) << i).invert());
+  return inverses2m[m];
 }
 
 template<class sint, class sgf2n>

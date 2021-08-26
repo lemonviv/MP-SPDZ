@@ -11,6 +11,8 @@
 template<int L>
 class fixint : public SignedZ2<64 * (L + 1)>
 {
+    static const int N_OVERFLOW = 60;
+
 public:
     typedef SignedZ2<64 * (L + 1)> super;
 
@@ -22,7 +24,7 @@ public:
     fixint(const T& other) :
             super(other)
     {
-        char check = this->a[this->N_WORDS - 1] >> 56;
+        auto check = mp_limb_signed_t(this->a[this->N_WORDS - 1]) >> N_OVERFLOW;
         assert(check == 0 or check == -1);
     }
 
@@ -36,9 +38,22 @@ public:
         return super::operator-();
     }
 
-    void generateUniform(PRNG& G, int n_bits)
+    fixint operator^(const fixint& other) const
     {
-        G.get(*this, n_bits);
+        assert(L == 0);
+        return fixint(this->a[0] ^ other.a[0]);
+    }
+
+    void generateUniform(PRNG& G, int n_bits, bool positive = true)
+    {
+        G.get(bigint::tmp, n_bits, positive);
+        *this = bigint::tmp;
+    }
+
+    void randomBnd(PRNG& G, const bigint& bound, bool positive)
+    {
+        G.randomBnd(bigint::tmp, bound, positive);
+        *this = bigint::tmp;
     }
 
     int get_min_alloc() const
@@ -55,11 +70,11 @@ public:
     void allocate_slots(const T& limit)
     {
         int n_bits = this->size_in_bits();
-        if (numBits(limit) - 56 > n_bits)
+        if (numBits(limit) - N_OVERFLOW > n_bits)
         {
-        cerr << "cannot hold " << numBits(limit) << " bits, " << n_bits
-                << " available" << endl;
-            throw runtime_error("fixed-length integer too small");
+            throw runtime_error("Fixed-length integer too small. "
+                    "Maybe change N_LIMBS_RAND to at least " +
+                    to_string((numBits(limit) - N_OVERFLOW) / 64));
         }
     }
 };

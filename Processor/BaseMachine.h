@@ -15,6 +15,8 @@
 #include <fstream>
 using namespace std;
 
+void print_usage(ostream& o, const char* name, size_t capacity);
+
 class BaseMachine
 {
 protected:
@@ -23,10 +25,12 @@ protected:
     std::map<int,Timer> timer;
 
     string compiler;
+    string domain;
+    string relevant_opts;
 
     void print_timers();
 
-    virtual void load_program(string threadname, string filename);
+    virtual void load_program(const string& threadname, const string& filename);
 
 public:
     static thread_local int thread_num;
@@ -38,24 +42,29 @@ public:
 
     ThreadQueues queues;
 
+    vector<string> bc_filenames;
+
     static BaseMachine& s();
     static bool has_singleton() { return singleton != 0; }
 
-    static string memory_filename(string type_short, int my_number);
+    static string memory_filename(const string& type_short, int my_number);
 
+    static string get_domain(string progname);
     static int ring_size_from_schedule(string progname);
+    static int prime_length_from_schedule(string progname);
+    static bigint prime_from_schedule(string progname);
 
     BaseMachine();
     virtual ~BaseMachine() {}
 
-    void load_schedule(string progname, bool load_bytecode = true);
+    void load_schedule(const string& progname, bool load_bytecode = true);
     void print_compiler();
 
     void time();
     void start(int n);
     void stop(int n);
 
-    virtual void reqbl(int n) { (void)n; throw runtime_error("not defined"); }
+    virtual void reqbl(int) {}
 
     OTTripleSetup fresh_ot_setup();
 };

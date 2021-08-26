@@ -8,6 +8,7 @@
 
 #include <GC/ShareThread.h>
 #include "GC/ShareParty.h"
+#include "BitPrepFiles.h"
 #include "Math/Setup.h"
 
 #include "Processor/Data_Files.hpp"
@@ -27,8 +28,9 @@ ShareThread<T>::ShareThread(const Names& N, OnlineOptions& opts, DataPositions& 
                 opts.live_prep ?
                         *static_cast<Preprocessing<T>*>(new typename T::LivePrep(
                                 usage, *this)) :
-                        *static_cast<Preprocessing<T>*>(new Sub_Data_Files<T>(N,
-                                get_prep_sub_dir<T>(PREP_DIR, N.num_players()), usage)))
+                        *static_cast<Preprocessing<T>*>(new BitPrepFiles<T>(N,
+                                get_prep_sub_dir<T>(PREP_DIR, N.num_players()),
+                                usage, BaseMachine::thread_num)))
 {
 }
 
@@ -72,6 +74,7 @@ void StandaloneShareThread<T>::pre_run()
 template<class T>
 void ShareThread<T>::post_run()
 {
+    protocol->check();
     MC->Check(*this->P);
 #ifndef INSECURE
 #ifdef VERBOSE
@@ -88,21 +91,21 @@ void ShareThread<T>::and_(Processor<T>& processor,
     auto& protocol = this->protocol;
     processor.check_args(args, 4);
     protocol->init_mul(DataF, *this->MC);
+    T x_ext, y_ext;
     for (size_t i = 0; i < args.size(); i += 4)
     {
         int n_bits = args[i];
         int left = args[i + 2];
         int right = args[i + 3];
-        T y_ext;
         for (int j = 0; j < DIV_CEIL(n_bits, T::default_length); j++)
         {
-            if (repeat)
-                y_ext = processor.S[right].extend_bit();
-            else
-                y_ext = processor.S[right + j];
             int n = min(T::default_length, n_bits - j * T::default_length);
-            protocol->prepare_mul(processor.S[left + j].mask(n),
-                    y_ext.mask(n), n);
+            if (repeat)
+                processor.S[right].extend_bit(y_ext, n);
+            else
+                processor.S[right + j].mask(y_ext, n);
+            processor.S[left + j].mask(x_ext, n);
+            protocol->prepare_mul(x_ext, y_ext, n);
         }
     }
 
@@ -115,7 +118,9 @@ void ShareThread<T>::and_(Processor<T>& processor,
         for (int j = 0; j < DIV_CEIL(n_bits, T::default_length); j++)
         {
             int n = min(T::default_length, n_bits - j * T::default_length);
-            processor.S[out + j] = protocol->finalize_mul(n).mask(n);
+            auto& res = processor.S[out + j];
+            protocol->finalize_mult(res, n);
+            res.mask(res, n);
         }
     }
 }

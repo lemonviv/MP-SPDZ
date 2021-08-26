@@ -5,6 +5,8 @@
 
 #include "square64.h"
 #include "Tools/cpu_support.h"
+#include "OT/BitMatrix.h"
+
 #include <stdexcept>
 #include <iostream>
 #include <assert.h>
@@ -25,7 +27,7 @@ union matrix32x8
 
     void transpose(square64& output, int x, int y)
     {
-#ifdef __AVX2__
+#if defined(__AVX2__) || !defined(__x86_64__)
         if (cpu_has_avx2())
         {
             for (int j = 0; j < 8; j++)
@@ -66,7 +68,7 @@ case I: \
 void zip(int chunk_size, __m256i& lows, __m256i& highs,
         const __m256i& a, const __m256i& b)
 {
-#ifdef __AVX2__
+#if defined(__AVX2__) || !defined(__x86_64__)
     if (cpu_has_avx2())
     {
         switch (chunk_size)
@@ -101,6 +103,18 @@ void square64::transpose(int n_rows, int n_cols)
 
     assert(n_rows <= 64);
     assert(n_cols <= 64);
+
+#ifndef __AVX2__
+    square128 tmp2;
+    tmp2.set_zero();
+    for (int i = 0; i < n_rows; i++)
+        tmp2.rows[i] = _mm_cvtsi64_si128(rows[i]);
+    tmp2.transpose();
+    *this = {};
+    for (int i = 0; i < n_cols; i++)
+        rows[i] = _mm_cvtsi128_si64(tmp2.rows[i]);
+    return;
+#endif
 
     square64 tmp = *this;
     *this = {};

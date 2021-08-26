@@ -13,8 +13,6 @@
 #include "SimpleMachine.h"
 #include "Tools/mkpath.h"
 
-#include "Math/gfp.hpp"
-
 template<class FD>
 Producer<FD>::Producer(int output_thread, bool write_output) :
     n_slots(0), output_thread(output_thread), write_output(write_output),
@@ -279,9 +277,7 @@ void InverseProducer<FD>::get(Share<T>& a, Share<T>& b)
     }
 
     TupleProducer<FD>::get(a, b);
-    T ab_inv;
-    ab_inv.invert(ab.element(i - 1));
-    b.mul(b,ab_inv);
+    b /= ab.element(i - 1);
 }
 
 void gfpBitProducer::get(Share<gfp>& a)
@@ -396,9 +392,7 @@ void gfpBitProducer::run(const Player& P, const FHE_PK& pk,
         else
         {
             marks[i] = 0;
-            gfp temp = s.element(i).sqrRoot();
-            temp.invert();
-            s.set_element(i, temp);
+            s.set_element(i, s.element(i).sqrRoot().invert());
         }
     }
     Ciphertext cv(params);
@@ -416,9 +410,9 @@ void gfpBitProducer::run(const Player& P, const FHE_PK& pk,
     // Step j and k
     Share<gfp> a;
     gfp two_inv, zero;
-    to_gfp(two_inv, (dd.f.get_field().get_prime() + 1) / 2);
+    two_inv = bigint((dd.f.get_field().get_prime() + 1) / 2);
     zero.assign_zero();
-    one.assign_one();
+    auto shared_one = Share<gfp>::constant(1, P.my_num(), alphai);
     bits.clear();
     for (unsigned int i = 0; i < vi.num_slots(); i++)
     {
@@ -427,7 +421,7 @@ void gfpBitProducer::run(const Player& P, const FHE_PK& pk,
             a.set_share(vi.element(i));
             a.set_mac(gam_vi.element(i));
             // Form (1/2)*a+1
-            a.add(a, one, P.my_num(), alphai);
+            a += shared_one;
             a.mul(a, two_inv);
             bits.push_back(a);
         }
@@ -586,16 +580,16 @@ void InputProducer<FD>::run(const Player& P, const FHE_PK& pk,
             for (auto& x : m)
                 x.randomize(G);
             personal_EC.generate_proof(C, m, ciphertexts, cleartexts);
-            P.send_all(ciphertexts, true);
-            P.send_all(cleartexts, true);
+            P.send_all(ciphertexts);
+            P.send_all(cleartexts);
         }
         else
         {
-            P.receive_player(j, ciphertexts, true);
-            P.receive_player(j, cleartexts, true);
+            P.receive_player(j, ciphertexts);
+            P.receive_player(j, cleartexts);
             C.resize(personal_EC.machine->sec, pk.get_params());
-            Verifier<FD, fixint<GFP_MOD_SZ>>(personal_EC.proof).NIZKPoK(C, ciphertexts,
-                    cleartexts, pk, false, false);
+            Verifier<FD>(personal_EC.proof, FieldD).NIZKPoK(C, ciphertexts,
+                    cleartexts, pk);
         }
 
         inputs[j].clear();

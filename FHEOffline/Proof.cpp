@@ -86,22 +86,25 @@ public:
   }
 };
 
-template <class T, class X>
 bool Proof::check_bounds(T& z, X& t, int i) const
 {
+  (void)i;
   unsigned int j,k;
 
   // Check Bound 1 and Bound 2
-  AbsoluteBoundChecker<fixint<GFP_MOD_SZ>> plain_checker(plain_check * n_proofs);
-  AbsoluteBoundChecker<fixint<GFP_MOD_SZ>> rand_checker(rand_check * n_proofs);
+  AbsoluteBoundChecker<bound_type> plain_checker(plain_check * n_proofs);
+  AbsoluteBoundChecker<typename Int_Random_Coins::rand_type> rand_checker(
+      rand_check * n_proofs);
   for (j=0; j<phim; j++)
     {
       auto& te = z[j];
       if (plain_checker.outside(te, dist))
         {
+#ifdef VERBOSE
           cout << "Fail on Check 1 " << i << " " << j << endl;
           cout << te << "  " << plain_check << endl;
           cout << tau << " " << sec << " " << n_proofs << endl;
+#endif
           return false;
         }
     }
@@ -113,9 +116,11 @@ bool Proof::check_bounds(T& z, X& t, int i) const
           auto& te = coeffs.at(j);
           if (rand_checker.outside(te, dist))
             {
+#ifdef VERBOSE
               cout << "Fail on Check 2 " << k << " : " << i << " " << j << endl;
               cout << te << "  " << rand_check << endl;
               cout << rho << " " << sec << " " << n_proofs << endl;
+#endif
               return false;
             }
         }
@@ -179,7 +184,3 @@ void Proof::Preimages::check_sizes()
   if (m.size() != r.size())
     throw runtime_error("preimage sizes don't match");
 }
-
-template bool Proof::check_bounds(AddableVector<fixint<GFP_MOD_SZ>>& z, AddableMatrix<fixint<0>>& t, int i) const;
-template bool Proof::check_bounds(AddableVector<fixint<GFP_MOD_SZ>>& z, AddableMatrix<fixint<1>>& t, int i) const;
-template bool Proof::check_bounds(AddableVector<fixint<GFP_MOD_SZ>>& z, AddableMatrix<fixint<2>>& t, int i) const;

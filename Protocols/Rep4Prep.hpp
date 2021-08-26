@@ -11,14 +11,9 @@
 template<class T>
 Rep4RingPrep<T>::Rep4RingPrep(SubProcessor<T>* proc, DataPositions& usage) :
         BufferPrep<T>(usage), BitPrep<T>(proc, usage),
-        RingPrep<T>(proc, usage), MaliciousRingPrep<T>(proc, usage)
-{
-}
-
-template<class T>
-Rep4Prep<T>::Rep4Prep(SubProcessor<T>* proc, DataPositions& usage) :
-        BufferPrep<T>(usage), BitPrep<T>(proc, usage),
-        RingPrep<T>(proc, usage), Rep4RingPrep<T>(proc, usage)
+        RingPrep<T>(proc, usage),
+        MaliciousDabitOnlyPrep<T>(proc, usage),
+        MaliciousRingPrep<T>(proc, usage)
 {
 }
 
@@ -26,7 +21,9 @@ template<class T>
 Rep4RingOnlyPrep<T>::Rep4RingOnlyPrep(SubProcessor<T>* proc,
         DataPositions& usage) :
         BufferPrep<T>(usage), BitPrep<T>(proc, usage),
-        RingPrep<T>(proc, usage), Rep4RingPrep<T>(proc, usage),
+        RingPrep<T>(proc, usage),
+        MaliciousDabitOnlyPrep<T>(proc, usage),
+        Rep4RingPrep<T>(proc, usage),
         RepRingOnlyEdabitPrep<T>(proc, usage)
 {
 }
@@ -80,7 +77,6 @@ void Rep4RingPrep<T>::buffer_bits()
 
     auto& protocol = this->proc->protocol;
 
-    protocol.init_mul();
     vector<typename T::open_type> bits;
     int batch_size = OnlineOptions::singleton.batch_size;
     bits.reserve(batch_size);
@@ -88,28 +84,13 @@ void Rep4RingPrep<T>::buffer_bits()
         bits.push_back(G.get_bit());
 
     protocol.init_mul();
-    for (auto& o : protocol.os)
-        o.reset_write_head();
     protocol.reset_joint_input(batch_size);
-    protocol.prepare_joint_input(0, 1, 3, 2, bits);
-    if (P.my_num() == 0)
-        P.send_relative(-1, protocol.os[0]);
-    if (P.my_num() == 3)
-        P.receive_relative(1, protocol.os[0]);
-    protocol.finalize_joint_input(0, 1, 3, 2);
-    auto a = protocol.results;
-
-    protocol.init_mul();
-    for (auto& o : protocol.os)
-        o.reset_write_head();
-    protocol.reset_joint_input(batch_size);
-    protocol.prepare_joint_input(2, 3, 1, 0, bits);
-    if (P.my_num() == 2)
-        P.send_relative(-1, protocol.os[0]);
-    if (P.my_num() == 1)
-        P.receive_relative(1, protocol.os[0]);
-    protocol.finalize_joint_input(2, 3, 1, 0);
-    auto b = protocol.results;
+    vector<typename Rep4<T>::ResTuple> a(batch_size), b(batch_size);
+    protocol.prepare_joint_input(0, 1, 3, 2, bits, a);
+    protocol.prepare_joint_input(2, 3, 1, 0, bits, b);
+    P.send_receive_all(protocol.channels, protocol.send_os, protocol.receive_os);
+    protocol.finalize_joint_input(0, 1, 3, 2, a);
+    protocol.finalize_joint_input(2, 3, 1, 0, b);
 
     auto results = protocol.results;
     protocol.init_mul();
@@ -121,13 +102,6 @@ void Rep4RingPrep<T>::buffer_bits()
     for (int i = 0; i < batch_size; i++)
         this->bits.push_back(
                 a[i].res + b[i].res - two * protocol.finalize_mul());
-}
-
-template<class T>
-void Rep4Prep<T>::buffer_inverses()
-{
-    assert(this->proc != 0);
-    ::buffer_inverses(this->inverses, *this, this->proc->MC, this->proc->P);
 }
 
 #endif /* PROTOCOLS_REP4PREP_HPP_ */

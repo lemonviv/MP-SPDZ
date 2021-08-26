@@ -75,6 +75,8 @@ public:
 
     static const bool actual_inputs = T::actual_inputs;
 
+    static int threshold(int nplayers) { return T::threshold(nplayers); }
+
     static Secret<T> input(party_id_t from, const int128& input, int n_bits = -1);
     static Secret<T> input(Processor<Secret<T>>& processor, const InputArgs& args);
     void random(int n_bits, int128 share);
@@ -127,8 +129,8 @@ public:
     void load_clear(int n, const Integer& x);
     void operator=(const Integer& x) { load_clear(default_length, x); }
 
-    Secret<T> operator<<(int i);
-    Secret<T> operator>>(int i);
+    Secret<T> operator<<(int i) const;
+    Secret<T> operator>>(int i) const;
 
     template<class U>
     void bitcom(Memory<U>& S, const vector<int>& regs);

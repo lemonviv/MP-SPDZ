@@ -36,6 +36,10 @@ void OTPrep<T>::set_protocol(typename T::Protocol& protocol)
     BitPrep<T>::set_protocol(protocol);
     SubProcessor<T>* proc = this->proc;
     assert(proc != 0);
+
+    // make sure not to use Montgomery multiplication
+    T::open_type::next::template init<typename T::open_type>(false);
+
     triple_generator = new typename T::TripleGenerator(
             BaseMachine::s().fresh_ot_setup(),
             proc->P.N, -1,
@@ -66,14 +70,21 @@ void MascotTriplePrep<T>::buffer_triples()
 }
 
 template<class T>
-void MascotFieldPrep<T>::buffer_inverses()
+void MascotDabitOnlyPrep<T>::buffer_bits()
 {
-    assert(this->proc != 0);
-    ::buffer_inverses(this->inverses, *this, this->proc->MC, this->proc->P);
+    buffer_bits<0>(T::clear::prime_field);
 }
 
 template<class T>
-void MascotFieldPrep<T>::buffer_bits()
+template<int>
+void MascotDabitOnlyPrep<T>::buffer_bits(true_type)
+{
+    buffer_bits_from_squares(*this);
+}
+
+template<class T>
+template<int>
+void MascotDabitOnlyPrep<T>::buffer_bits(false_type)
 {
     this->params.generateBits = true;
     auto& triple_generator = this->triple_generator;
@@ -85,22 +96,7 @@ void MascotFieldPrep<T>::buffer_bits()
 }
 
 template<class T>
-void MascotPrep<T>::buffer_dabits(ThreadQueues* queues)
-{
-    assert(this->proc != 0);
-    DabitSacrifice<T> dabit_sacrifice;
-    vector<dabit<T>> check_dabits;
-#ifdef VERBOSE_DABIT
-    cerr << "Generate daBits to sacrifice" << endl;
-#endif
-    this->buffer_dabits_without_check(check_dabits,
-            dabit_sacrifice.minimum_n_inputs(), queues);
-    dabit_sacrifice.sacrifice_and_check_bits(this->dabits, check_dabits,
-            *this->proc, queues);
-}
-
-template<class T>
-void MascotTriplePrep<T>::buffer_inputs(int player)
+void MascotInputPrep<T>::buffer_inputs(int player)
 {
     auto& triple_generator = this->triple_generator;
     assert(triple_generator);
@@ -112,14 +108,7 @@ void MascotTriplePrep<T>::buffer_inputs(int player)
 }
 
 template<class T>
-T MascotTriplePrep<T>::get_random()
-{
-    assert(this->proc);
-    return BufferPrep<T>::get_random_from_inputs(this->proc->P.num_players());
-}
-
-template<class T>
-T BufferPrep<T>::get_random_from_inputs(int nplayers)
+T Preprocessing<T>::get_random_from_inputs(int nplayers)
 {
     T res;
     for (int j = 0; j < nplayers; j++)
