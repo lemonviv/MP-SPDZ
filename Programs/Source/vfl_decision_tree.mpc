@@ -31,7 +31,7 @@ sfix.set_precision(FIXED_F, FIXED_K)
 cfix.set_precision(FIXED_F, FIXED_K)
 
 # client related parameters
-PORT_NUM = 18000
+# PORT_NUM = 18000
 MAX_NUM_CLIENTS = 3
 MAX_GLOBAL_SPLIT_NUM = 6000
 MAX_CLASSES_NUM = 5
@@ -41,6 +41,8 @@ PRUNE_VARIANCE_THRESHOLD = 0.0001
 MAX_SAMPLE_NUM = 50000
 MAX_TREE_NUM = 64
 MAX_TREE_NODE_NUM = 1024
+
+PORT_NUM = public_input()
 
 # accept a client's connection
 def accept_client():
