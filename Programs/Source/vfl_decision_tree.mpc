@@ -16,7 +16,6 @@
 """
 
 from Compiler.types import sint, regint, Array, MemValue
-from Compiler.instructions import listen, acceptclientconnection
 from Compiler.library import print_ln, do_while, for_range
 from Compiler.util import if_else
 from Compiler import mpc_math, floatingpoint
@@ -27,7 +26,7 @@ import ml
 # default program parameters
 MAX_NBITS = 14
 FIXED_F = 16
-FIXED_K = 31
+FIXED_K = 48
 sfix.set_precision(FIXED_F, FIXED_K)
 cfix.set_precision(FIXED_F, FIXED_K)
 
@@ -45,8 +44,7 @@ MAX_TREE_NODE_NUM = 1024
 
 # accept a client's connection
 def accept_client():
-    client_socket_id = regint()
-    acceptclientconnection(client_socket_id, PORT_NUM)
+    client_socket_id = accept_client_connection(PORT_NUM)
     return client_socket_id
 
 def close_connections(number_clients):
@@ -666,7 +664,7 @@ def main():
     """Listen in while loop for clients to join a game. Once maximum reached or have notified that round finished, run comparison and return result."""
 
     # Start listening for client socket connections
-    listen(PORT_NUM)
+    listen_for_clients(PORT_NUM)
     print_ln('Listening for client connections on base port %s', PORT_NUM)
 
     @do_while
