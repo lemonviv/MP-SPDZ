@@ -1,0 +1,475 @@
+import torch
+from sklearn.linear_model import Ridge, lars_path
+import torch.optim as optim
+from torchvision import datasets, transforms
+from torch.utils.data import Dataset, DataLoader
+import torch.nn as nn
+import torch.nn.functional as F
+import time
+import math
+import torch.autograd as autograd
+from torch.autograd import Variable
+import random
+import matplotlib.pyplot as plt
+import torchvision.utils as vutils
+import numpy as np
+import torchvision.models as tvmodels
+from datetime import datetime
+from functools import partial 
+from sklearn.utils import check_random_state
+import sklearn.metrics 
+import os
+import json
+import string 
+
+from Compiler.types import sint, sfix, MultiArray, cfix
+from Compiler.library import print_ln, for_range, start_timer, stop_timer, multithread, print_ln_if
+from Compiler import mpc_math, ml, program
+
+class GlobalPreModel_LR(nn.Module):
+    def __init__(self, in_dim, out_dim=2):
+        super(GlobalPreModel_LR, self).__init__()
+        self.dense = nn.Sequential(
+            nn.Linear(in_dim, out_dim, bias=True),
+            nn.Sigmoid(), 
+            nn.Softmax(dim=1)
+        )
+        
+    def forward(self, x):
+        return self.dense(x)
+
+
+
+def initialFeatureClassNames():
+    feature_names = ["age", 
+    "job", 
+    "marital", 
+    "education", 
+    "default",
+    "housing",
+    "loan",
+    "contact",
+    "month",
+    "day_of_week",
+    "duration",
+    "campaign",
+    "pdays",
+    "previous",
+    "poutcome",
+    "emp.var.rate",
+    "cons.price.idx",
+    "cons.conf.idx",
+    "euribor3m",
+    "nr.employed"]
+
+    class_names = ["NoDeposit", "YesDeposit"]
+    return feature_names, class_names
+
+def getKernel(kernel_width):
+    def kernel(dists, kernel_width):
+        """ Compute the sample weights used in the interpretatation model
+            Args:
+                dists: sfix.Array(sample_num)
+                kernel_width: numpy.float64
+            Returns:
+                weights: sfix.Array(sample_num)
+        """
+        weights = sfix.Array(dists.length)
+            
+        @for_range_parallel(5, dists.length)
+        def _(i):    
+            weights[i] = mpc_math.sqrt(mpc_math.pow_fx(math.e, (dists[i]**2)*(-1)*(1/(kernel_width**2))))
+        return weights
+    kernel_fn = partial(kernel, kernel_width=kernel_width) # fix the value of kernel_width
+    return kernel_fn
+
+def assign2Dnparr2Container(nparr, container):
+    """ Convert a np.array to a MultiArray or Matrix
+    
+    """
+    x, y = nparr.shape
+    for i in range(x):
+        for j in range(y):
+            container[i][j] = nparr[i][j]
+
+def __data_inverse(feature_num, num_samples):
+    """Generates a neighborhood around a prediction."""
+    sample_around_instance = False
+    categorical_features = range(feature_num)
+
+    random_state = check_random_state(manualseed)
+    data = random_state.normal(0, 1, num_samples * feature_num).reshape(num_samples, feature_num) # Normal(0,1)
+    if sample_around_instance:
+        pass
+    else:
+        data = data 
+    # first_row = data_row
+    # data[0] = data_row.copy()
+    inverse = data.copy()
+    for column in categorical_features:
+        # process inverse
+        pass
+    # inverse[0] = data_row
+    return data, inverse
+
+def compNeighborLabels(trainedModel, neighborData):
+    yss = trainedModel(torch.from_numpy(neighborData).float()).detach().numpy()
+    return yss
+
+def sumArray(sarray):
+    suma = sfix(0)
+    for i in sarray:
+        suma = suma + i
+    return suma
+
+def compEncryptNeighborDistances(neighborData, datarow, distance_metric):
+    """ Compute the distance matrix between neighborData and datarow
+        Args:
+            neighborData: numpy.ndarray(sample_num, feature_num)
+            datarow: sfix.MultiArray(1, feature_num)
+        Returns:
+            dists: sfix.Array(sample_num)
+    """
+    sample_num, feature_num = neighborData.shape
+    dists = sfix.Array(sample_num)
+    temp = sfix.Array(feature_num)
+     
+    for i in range(sample_num):
+        for j in range(feature_num):
+            temp[j] = (datarow[0][j] - neighborData[i][j])**2
+        dists[i] = mpc_math.sqrt(sumArray(temp))
+    return dists
+
+class Explanation(object):
+    """Object returned by explainers."""
+
+    def __init__(self, feature_num, class_num, feature_names=None, class_names=None):
+        """ 
+        Args:
+            feature_names: list of feature names
+            class_names: list of class names (only used for classification)
+        """ 
+        
+        self.local_exp = {}
+        self.intercept = {}
+        self.score = None
+        self.local_pred = None
+        self.scaled_data = None
+        self.class_names = class_names
+        self.feature_names = feature_names
+        if class_names is None:
+            self.class_names = [str(x) for x in range(class_num)]
+        if feature_names is None:
+            self.feature_names = [str(x) for x in range(feature_num)]
+
+        self.predict_proba = None    # the prediction for the instance being explained
+        
+    def map_exp_ids(self, exp):
+        """Maps ids to feature names.
+        Args:
+            exp: list of tuples [(id, weight), (id,weight)]
+        Returns:
+            list of tuples (feature_name, weight)
+        """
+        return [(self.feature_names[x[0]], x[1]) for x in exp]
+
+    def available_labels(self):
+        """
+            Returns the list of classification labels for which we have any explanations.
+        """
+        ans = self.local_exp.keys()
+        return list(ans)
+
+    def as_list(self, label=1, **kwargs):
+        """Returns the explanation as a list.
+        Args:
+            label: desired label. If you ask for a label for which an
+                explanation wasn't computed, will throw an exception.
+                Will be ignored for regression explanations.
+            kwargs: keyword arguments, passed to domain_mapper
+        Returns:
+            list of tuples (representation, weight), where representation is
+            given by domain_mapper. Weight is a float.
+        """
+        label_to_use = label
+        ans = self.map_exp_ids(self.local_exp[label_to_use], **kwargs)
+
+        return ans
+
+    def as_map(self):
+        """Returns the map of explanations.
+        Returns:
+            Map from label to list of tuples (feature_id, weight).
+        """
+        return self.local_exp
+
+class RidgeSGD(object):
+    def __init__(self, alpha=1.0, fit_intercept=True, max_iter=1000, tol=1e-3):
+        self.alpha=alpha
+        self.fit_intercept=fit_intercept
+        self.max_iter=max_iter
+        self.tol=tol
+        self.coef_ = None
+        self.intercept_ = None
+        self.n_iter_ = None
+        
+    def ridgeSGDFit(self, X, y, n_samples, n_features, sample_weight=None):        
+        self.coef_, self.intercept_, self.n_iter_ = self.sag_solver(X, y, n_samples, n_features, self.fit_intercept, sample_weight, self.alpha, max_iter=self.max_iter, tol=self.tol)
+        return self.coef_, self.intercept_, self.n_iter_
+
+    def printFittedModel(self, n_features):
+        for i in range(n_features):
+            print_ln("coef[%s]: %s", i, self.coef_[i].reveal())
+        print_ln("intercept: %s", self.intercept_.reveal())
+        print_ln("n_iter: %s", self.n_iter_)
+
+    def sag_solver(self, X, y, n_samples, n_features, fit_intercept=True, sample_weight=None, alpha=1., max_iter=1000, tol=0.001):
+        """Takes perturbed data, labels and distances, returns explanation.
+            Args:
+                X: perturbed data. sfix.Matrix(n_samples, n_features)
+                y: corresponding perturbed labels. cfix.Array(n_samples)
+                n_samples: number of samples in X. int
+                n_features: number of features. int
+
+            Returns:
+                weights: sfix.Array(n_features)
+                intercept: sfix
+                n_iter: number of epochs. int
+        """
+
+        def fmax(a, b):
+            # Information has to be passed out via container types
+            res = sfix.Array(1)
+            @if_e((a < b).reveal())
+            def _():
+                res[0] = b
+            @else_
+            def _():
+                res[0] = a 
+            return res[0]
+
+        def innerProduct(arr1, arr2, length, isSecret=True):
+            product = sfix(0) if isSecret else cfix(0)
+            for i in range(length):
+                product = product + arr1[i] * arr2[i]
+            return product
+
+        def arrDotScalar(arr, scalar, length, isSecret=True):
+            result = sfix.Array(length) if isSecret else cfix.Array(length)
+            for i in range(length):
+                result[i] = arr[i] * scalar
+            return result
+
+        def assignArray2MatrixRow(matrix, arr, length, base=0):
+            for i in range(length):
+                matrix[base][i] = arr[i]
+
+        # As in SGD, the alpha is scaled by n_samples.
+        alpha_scaled = float(alpha) / n_samples 
+            
+        weights = sfix.Array(n_features)
+        previous_weights = sfix.Array(n_features)
+        sum_gradient = sfix.Array(n_features)
+        gradient_memory = sfix.Matrix(n_samples, n_features)
+        intercept = sfix(0)
+        intercept_sum_gradient = sfix(0)
+        intercept_decay = 1.0
+        intercept_gradient_memory = sfix.Array(n_samples)
+        seen = set()
+        rng = np.random.RandomState(77)
+        max_squared_sum = 20    # to be defined
+        L = max_squared_sum + int(fit_intercept) + alpha_scaled
+        step_size = 1. / L
+        stop_flag = 0
+        
+        for epoch in range(max_iter):
+            for k in range(n_samples):
+                idx = int(rng.rand(1) * n_samples)
+                entry = X[idx]
+                seen.add(idx)
+                p = innerProduct(entry, weights, n_features, isSecret=True) + intercept # inner product of 1-D arrays
+                gradient = p - y[idx]
+                if sample_weight is not None:
+                    gradient = gradient * sample_weight[idx]
+                update = arrDotScalar(entry, gradient, n_features) + arrDotScalar(weights, alpha_scaled, n_features)  
+                gradient_correction = update + arrDotScalar(gradient_memory[idx], -1, n_features)
+                sum_gradient = sum_gradient + gradient_correction
+                assignArray2MatrixRow(gradient_memory, update, n_features, base=idx)
+                
+                if fit_intercept:
+                    gradient_correction = (gradient - intercept_gradient_memory[idx])
+                    intercept_gradient_memory[idx] = gradient
+                    intercept_sum_gradient = intercept_sum_gradient + gradient_correction
+                
+                    intercept = intercept - (intercept_sum_gradient * (step_size / len(seen) * intercept_decay))
+                
+                # weights = weights - sum_gradient * (step_size / len(seen))
+                weights = weights + arrDotScalar(sum_gradient, - step_size/len(seen), n_features)
+            # The iterations will stop when max(change in weights) / max(weights) < tol.
+            max_change = sfix(0)
+            max_weight = sfix(0)
+            for i in range(n_features):
+                max_weight = fmax(max_weight, abs(weights[i]))
+                max_change = fmax(max_change, abs(weights[i] - previous_weights[i]))
+                previous_weights[i] = weights[i]
+            # if (max_weight != 0 and max_change/max_weight <= tol) or (max_weight == 0 and max_change ==0):
+            @if_((max_change/max_weight <= tol).reveal())
+            def _():
+                global stop_flag
+                stop_flag = 1 
+            if stop_flag:
+                break
+        return weights, intercept, epoch+1
+
+class LimeBase(object):
+    """Class for learning a locally linear sparse model from perturbed data"""
+    def __init__(self, kernel_fn, verbose=True):
+        """ Args:
+            kernel_fn: function that transforms an array of distances into an
+                        array of proximity values (floats).
+            verbose: if true, print local prediction values from linear model.
+        """
+        self.kernel_fn = kernel_fn
+        self.verbose = verbose
+
+    def explain_instance_with_data(self, neighborhood_data, neighborhood_labels, neighbor_num, feature_num, distances, label, max_iter=10):
+        """Takes perturbed data, labels and distances, returns explanation.
+        Args:
+            neighborhood_data: perturbed data, 2d array. first element is
+                               assumed to be the original data point.
+            neighborhood_labels: corresponding perturbed labels. np.ndarray [n_sample, n_class]
+            distances: distances to original data point.
+            label: label for which we want an explanation
+
+        Returns:
+            (intercept, exp, score):
+            intercept is a float.
+            exp is a sorted list of tuples, where each tuple (x,y) corresponds
+            to the feature id (x) and the local weight (y). The list is sorted
+            by decreasing absolute value of y.
+            score is the R^2 value of the returned explanation
+        """
+        weights = self.kernel_fn(distances)  # sfix.Array(sample_num)
+        print_ln("Sample weights: %s; weights.length: %s", weights.reveal(), weights.length)
+        print_ln("Explain label: %s", label)
+
+        Y = cfix.Array(neighbor_num)
+        Y.assign(neighborhood_labels[:, label].tolist())
+
+        X = cfix.Matrix(neighbor_num, feature_num)
+        assign2Dnparr2Container(neighborhood_data, X)
+      
+        # "-----------------------------------------"
+        # weights = sfix.Array(6)
+        # weights.assign([0.1, 0.2, 0.3, 0.4, 0.5, 0.6])
+        # print_ln("Sample weights: %s", weights.reveal())
+
+        # Y = cfix.Array(6)
+        # Y.assign([ 3.22863539,  7.97319784,  7.33683503,  0.46354207, -0.42393931, 5.57440603])
+        # print_ln("Y: %s", Y)
+
+        # X = sfix.Matrix(6, 4)
+        # data = np.array([[ 0.19726657,  0.47634482 , 0.13639886 ,-1.05166339],
+        # [ 1.16746643, -1.31873322,  0.84062791 , 0.40889779],
+        # [ 0.5935143,  -1.21112369,  1.45865347 ,-0.11789185],
+        # [-1.10569736 , 1.99502655 ,-1.34626636 ,-0.89844852],
+        # [ 0.68351378 ,-0.7216402 , -0.1710832 , -1.16615615],
+        # [-1.02646512 ,-0.55733092,  0.83821922 , 0.22304532]])
+        # assign2Dnparr2Container(data, X)
+        # neighbor_num = 6
+        # feature_num = 4
+        # "-----------------------------------------"
+        ridge = RidgeSGD(alpha=1, fit_intercept=True, max_iter=max_iter)
+        ridge.ridgeSGDFit(X, Y, n_samples=neighbor_num, n_features=feature_num, sample_weight=weights)
+        
+        if self.verbose:
+            ridge.printFittedModel(feature_num)
+        return ridge.coef_, ridge.intercept_, ridge.n_iter_
+
+print_ln(" ------------------------------ MAIN BODY ------------------------------ ")
+# initialize some parameters
+manualseed = 47
+random.seed(manualseed)
+torch.manual_seed(manualseed)
+np.random.seed(manualseed)
+
+
+"""create dataset info and load dataset"""
+feature_names, class_names = initialFeatureClassNames()
+samp_num = 30488 
+neighbor_num = 6
+feature_num = 20
+class_num = 2
+
+# data_p0 = MultiArray([30488, 10], sfix)
+# data_p1 = MultiArray([30488, 10], sfix)
+# label_p1 = MultiArray([30488, 1], sfix)
+
+# data_p0.input_from(0)
+# data_p1.input_from(1)
+# label_p1.input_from(1)
+
+# print_ln("After load data:")
+# print_ln("data_p0[0]: %s", data_p0[0].reveal())
+# print_ln("data_p1[0]: %s", data_p1[0].reveal())
+# print_ln("data_p0[30487]: %s", data_p0[30487].reveal())
+# print_ln("data_p1[30487]: %s", data_p1[30487].reveal())
+
+# for i in range(6):
+#     idx = samp_num -1 - i
+#     print_ln("label_p1[%s]: %s", idx, label_p1[idx].reveal())
+
+data_p0 = MultiArray([3, 10], sfix)
+data_p1 = MultiArray([3, 10], sfix)
+label_p1 = MultiArray([3, 1], sfix)
+
+data_p0.input_from(0)
+data_p1.input_from(1)
+
+# print_ln("After load data:")
+# for idx in range(3):
+#     print_ln("data_p0[%s]: %s", idx, data_p0[idx].reveal())
+#     print_ln("data_p1[%s]: %s", idx, data_p1[idx].reveal())
+#     print_ln("label_p1[%s]: %s", idx, label_p1[idx].reveal())    
+
+data_row = MultiArray([1, feature_num], sfix)     # the instance to be explained
+for i in range(feature_num):
+    half_feature = int(feature_num / 2)
+    if i < half_feature:
+        data_row[0][i] = data_p0[0][i]
+    else:
+        data_row[0][i] = data_p1[0][i - half_feature]
+print_ln("data_row: %s", data_row[0].reveal())
+
+"""load trained LR model """
+lrmodel = GlobalPreModel_LR(feature_num, class_num) 
+interpreted_model_path = "/home/xinjian/Desktop/model_interpretability/models/lrmodel.pt"
+lrmodel.load_state_dict(torch.load(interpreted_model_path))    
+
+""" kernel """
+kernel_fn = getKernel(np.sqrt(feature_num) * .75)
+
+""" neighboring data 
+    data for computing distances, inverse for computing model predictions """
+data, inverse = __data_inverse(feature_num, num_samples=neighbor_num)
+# print_ln("Shape of the neighboring dataset: %s", data.shape)
+
+distances = compEncryptNeighborDistances(data, data_row, distance_metric='euclidean')
+print_ln("Distances: %s; distances.length: %s", distances.reveal(), distances.length)
+
+yss = compNeighborLabels(lrmodel, inverse)  # np.ndarray [n_sample, n_class]
+# print_ln("Type of yss: %s; Shape of yss: %s", type(yss), yss.shape)
+if not np.allclose(yss.sum(axis=1), 1.0):
+    # Returns True if two arrays are element-wise equal within a tolerance
+    print(""" Prediction probabilties do not sum to 1, and
+                thus does not constitute a probability space.
+                Check that you classifier outputs probabilities
+                (Not log probabilities, or actual class predictions). """)    
+
+ret_exp = Explanation(feature_num, class_num, feature_names, class_names)
+
+base = LimeBase(kernel_fn, verbose=True) 
+label = 0
+base.explain_instance_with_data(data, yss, neighbor_num, feature_num, distances, 0) 
+
+print_ln(" ------------------------------ FINISHED ------------------------------ ")
