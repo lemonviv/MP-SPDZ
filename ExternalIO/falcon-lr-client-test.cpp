@@ -112,7 +112,9 @@ void send_private_batch_shares(std::vector<float> shares, vector<ssl_socket*>& s
     // Map inputs into gfp
     vector<gfp> input_values_gfp(number_inputs);
     for (int i = 0; i < number_inputs; i++) {
-        input_values_gfp[i].assign(long_shares[i]);
+        // input_values_gfp[i].assign(long_shares[i]);
+        bigint::tmp = long_shares[i];
+        input_values_gfp[i] = gfpvar(bigint::tmp);
     }
 
     cout << "Begin send private inputs to the SPDZ engine..." << endl;
