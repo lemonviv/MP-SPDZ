@@ -14,7 +14,7 @@
 using namespace std;
 
 #ifndef PREP_DIR
-#define PREP_DIR "/home/wuyuncheng/Documents/falcon/third_party/MP-SPDZ/Player-Data/"
+#define PREP_DIR "/opt/falcon/third_party/MP-SPDZ/Player-Data/"
 #endif
 
 /*

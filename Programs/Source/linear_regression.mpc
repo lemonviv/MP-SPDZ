@@ -1,6 +1,6 @@
 # coding: latin-1
 """
-  Provide logistic function MPC computation for falcon project
+  Provide linear regression MPC computation for falcon project
 
   Specifically, this program does in three steps:
   (1) First, keep waiting enough clients (equals to party_num) connected to this program.
@@ -32,8 +32,8 @@ sfix.set_precision(FIXED_F, FIXED_K)
 cfix.set_precision(FIXED_F, FIXED_K)
 
 ### set necessary parameters
-MAX_ARRAY_SIZE = 100000
-PORT_NUM = 14000
+MAX_ARRAY_SIZE = 1000
+PORT_NUM = 15000
 MAX_NUM_CLIENTS = 3
 MAX_NBITS = 14
 NULL = -2147483648
@@ -70,8 +70,8 @@ def client_public_parameters(client_socket_id):
     return array_size_arr[0]
 
 
-### Compute the logistic function given the received secret shares
-def logistic_func(client_inputs, array_size):
+### Compute the regularized term given the received weights, if w_j > 0, return -1, else, return 1
+def regularized_comp(client_inputs, array_size):
     result = Array(MAX_ARRAY_SIZE, sfix)
     temp = Array(1, sfix)
     @for_range(array_size)
@@ -81,8 +81,13 @@ def logistic_func(client_inputs, array_size):
         def inner(i):
             temp[0] = temp[0] + client_inputs[i][j]
         #print_ln("The temp[0] is %s", temp[0].reveal())
-        result[j] = ml.sigmoid(temp[0])
-        print_ln("The result[j] sigmoid function is %s", result[j].reveal())
+        @if_e (temp[0].reveal() > 0)
+        def _():
+            result[j] = -1.0
+        @else_
+        def _():
+            result[j] = 1.0
+        print_ln("The result[j] counter-sign is %s", result[j].reveal())
     temp.delete()
     return result
 
@@ -189,7 +194,7 @@ def main():
 
         # step 3: compute the logistic function
         result = sfix.Array(MAX_ARRAY_SIZE)
-        result = logistic_func(client_values, array_size)
+        result = regularized_comp(client_values, array_size)
 
         # step 4: write values back to the clients
         write_result_to_clients(client_sockets, MAX_NUM_CLIENTS, result, array_size)
