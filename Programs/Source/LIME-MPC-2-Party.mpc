@@ -470,6 +470,6 @@ ret_exp = Explanation(feature_num, class_num, feature_names, class_names)
 
 base = LimeBase(kernel_fn, verbose=True) 
 label = 0
-base.explain_instance_with_data(data, yss, neighbor_num, feature_num, distances, 0) 
+base.explain_instance_with_data(data, yss, neighbor_num, feature_num, distances, label) 
 
 print_ln(" ------------------------------ FINISHED ------------------------------ ")
