@@ -33,12 +33,12 @@ cfix.set_precision(FIXED_F, FIXED_K)
 
 ### set necessary parameters
 MAX_ARRAY_SIZE = 100000
-PORT_NUM = 14000
+# PORT_NUM = 14000
 MAX_NUM_CLIENTS = 3
 MAX_NBITS = 14
 NULL = -2147483648
 
-#PORT_NUM = public_input()
+PORT_NUM = public_input()
 
 ### Accept client connections
 def accept_client():
