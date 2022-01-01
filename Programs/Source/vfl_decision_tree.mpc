@@ -253,6 +253,8 @@ def compute_variance(clients_statistics, clients_left_nums, clients_right_nums, 
         #print_ln('clients_statistics[%s][2] = %s', i, clients_statistics[i][2].reveal())
         #print_ln('clients_statistics[%s][3] = %s', i, clients_statistics[i][3].reveal())
 
+        #print_ln('clients_left_nums[%s] = %s, clients_right_nums[%s] = %s', i, clients_left_nums[i].reveal(), i, clients_right_nums[i].reveal())
+
         left_variance[0] = (clients_statistics[i][2] / clients_left_nums[i]) - (clients_statistics[i][0] / clients_left_nums[i]) ** 2
         right_variance[0] = (clients_statistics[i][3] / clients_right_nums[i]) - (clients_statistics[i][1] / clients_right_nums[i]) ** 2
 
@@ -297,11 +299,11 @@ def find_best_split(splits_impurity, global_split_num):
             best_split_index[0] = i
             best_impurity[0] = splits_impurity[i][0]
 
-    #print_ln('The found best_split_index[0] = %s', best_split_index[0])
+    print_ln('The found best_split_index[0] = %s', best_split_index[0])
     best_left_impurity[0] = splits_impurity[best_split_index][1]
     best_right_impurity[0] = splits_impurity[best_split_index][2]
-    #print_ln('best_left_impurity = %s', best_left_impurity[0].reveal())
-    #print_ln('best_right_impurity = %s', best_right_impurity[0].reveal())
+    print_ln('best_left_impurity = %s', best_left_impurity[0].reveal())
+    print_ln('best_right_impurity = %s', best_right_impurity[0].reveal())
 
     ### For receive consistency, convert the best_split_index to sfix
     best_split_index_sfix = Array(1, sfix)
