@@ -176,7 +176,7 @@ class Explanation(object):
 
 
 class RidgeSGD(object):
-    def __init__(self, alpha=1.0, fit_intercept=True, max_iter=1000, tol=1e-3):
+    def __init__(self, alpha=1.0, fit_intercept=True, max_iter=1000, tol=1e-3, penalty="l2"):
         self.alpha = alpha
         self.fit_intercept = fit_intercept
         self.max_iter = max_iter
@@ -184,11 +184,12 @@ class RidgeSGD(object):
         self.coef_ = None
         self.intercept_ = None
         self.n_iter_ = None
+        self.penalty = penalty
 
     def ridgeSGDFit(self, X, y, n_samples, n_features, sample_weight=None):
         self.coef_, self.intercept_, self.n_iter_ = self.sag_solver(X, y, n_samples, n_features, self.fit_intercept,
                                                                     sample_weight, self.alpha, max_iter=self.max_iter,
-                                                                    tol=self.tol)
+                                                                    tol=self.tol, penalty=self.penalty)
         return self.coef_, self.intercept_, self.n_iter_
 
     def printFittedModel(self, n_features):
@@ -198,7 +199,7 @@ class RidgeSGD(object):
         print_ln("n_iter: %s", self.n_iter_)
 
     def sag_solver(self, X, y, n_samples, n_features, fit_intercept=True, sample_weight=None, alpha=1., max_iter=1000,
-                   tol=0.001):
+                   tol=0.001, penalty="l2"):
         """Takes perturbed data, labels and distances, returns explanation.
             Args:
                 X: perturbed data. sfix.Matrix(n_samples, n_features)
@@ -242,6 +243,19 @@ class RidgeSGD(object):
             for i in range(length):
                 matrix[base][i] = arr[i]
 
+        def l1Gradients(weights):
+            size = len(weights)
+            global gradients, i, myweights
+            myweights = weights
+            gradients = sfix.Array(size)
+            for i in range(size):
+                gradients[i] = 1
+                @if_((myweights[i] < 0).reveal())
+                def _():
+                    global gradients, i
+                    gradients[i] = -1
+            return gradients
+
         # As in SGD, the alpha is scaled by n_samples.
         alpha_scaled = float(alpha) / n_samples
 
@@ -269,7 +283,11 @@ class RidgeSGD(object):
                 gradient = p - y[idx]
                 if sample_weight is not None:
                     gradient = gradient * sample_weight[idx]
-                update = arrDotScalar(entry, gradient, n_features) + arrDotScalar(weights, alpha_scaled, n_features)
+                if penalty == "l2":
+                    update = arrDotScalar(entry, gradient, n_features) + arrDotScalar(weights, alpha_scaled, n_features)
+                elif penalty == "l1":
+                    l1gradients = l1Gradients(weights)
+                    update = arrDotScalar(entry, gradient, n_features) + arrDotScalar(l1gradients, alpha_scaled, n_features)
                 gradient_correction = update + arrDotScalar(gradient_memory[idx], -1, n_features)
                 sum_gradient = sum_gradient + gradient_correction
                 assignArray2MatrixRow(gradient_memory, update, n_features, base=idx)
@@ -440,6 +458,7 @@ data_row, X, yss = loadPrivateTrainingData([n_A_features, n_B_features], class_n
 # for i in range(neighbor_num):
 #     print_ln("X[%s]: %s", i, X[i].reveal())
 #     print_ln("yss[%s]: %s", i, yss[i].reveal())
+# print_ln("len(X): %s", len(X))
 
 """ kernel """
 kernel_fn = getKernel(np.sqrt(feature_num) * .75)
@@ -453,8 +472,12 @@ print_ln("Distances: %s; distances.length: %s", distances.reveal(), distances.le
 # base.explain_instance_with_data(data, yss, neighbor_num, feature_num, distances, label)
 
 weights = kernel_fn(distances)  # sfix.Array(sample_num)
-ridge = RidgeSGD(alpha=1, fit_intercept=True, max_iter=1000)
+ridge = RidgeSGD(alpha=1, fit_intercept=True, max_iter=1000, penalty="l2")
 ridge.ridgeSGDFit(X, yss, n_samples=neighbor_num, n_features=feature_num, sample_weight=weights)
 ridge.printFittedModel(feature_num)
+
+
+
+
 
 print_ln(" ------------------------------ FINISHED ------------------------------ ")
