@@ -1,19 +1,9 @@
-import torch
-from sklearn.linear_model import Ridge, lars_path
-import torch.optim as optim
-from torchvision import datasets, transforms
-from torch.utils.data import Dataset, DataLoader
-import torch.nn as nn
-import torch.nn.functional as F
+
 import time
 import math
-import torch.autograd as autograd
-from torch.autograd import Variable
 import random
 import matplotlib.pyplot as plt
-import torchvision.utils as vutils
 import numpy as np
-import torchvision.models as tvmodels
 from datetime import datetime
 from functools import partial
 from sklearn.utils import check_random_state
@@ -43,20 +33,6 @@ IS_NOT_FIRST = 0
 IS_LEFT = 1
 IS_NOT_LEFT = 0
 INFINITY = 1e5
-
-
-class GlobalPreModel_LR(nn.Module):
-    def __init__(self, in_dim, out_dim=2):
-        super(GlobalPreModel_LR, self).__init__()
-        self.dense = nn.Sequential(
-            nn.Linear(in_dim, out_dim, bias=True),
-            nn.Sigmoid(),
-            nn.Softmax(dim=1)
-        )
-
-    def forward(self, x):
-        return self.dense(x)
-
 
 def initialFeatureClassNames():
     feature_names = ["age",
@@ -134,11 +110,6 @@ def __data_inverse(feature_num, num_samples, manualseed=47):
         pass
     # inverse[0] = data_row
     return data, inverse
-
-
-def compNeighborLabels(trainedModel, neighborData):
-    yss = trainedModel(torch.from_numpy(neighborData).float()).detach().numpy()
-    return yss
 
 
 def sumArray(sarray):
@@ -300,82 +271,7 @@ class LimeBase(object):
 
 def resetRandomStates(manualseed=47):
     random.seed(manualseed)
-    torch.manual_seed(manualseed)
     np.random.seed(manualseed)
-
-
-def loadPrivateTrainingData(n_A_features=10, n_B_features=10, n_samples=3, n_features=20):
-    # private data for computing regressive model
-    # data_p0 = MultiArray([30488, 10], sfix)
-    # data_p1 = MultiArray([30488, 10], sfix)
-    # label_p1 = MultiArray([30488, 1], sfix)
-
-    # data_p0.input_from(0)
-    # data_p1.input_from(1)
-    # label_p1.input_from(1)
-
-    # print_ln("After load data:")
-    # print_ln("data_p0[0]: %s", data_p0[0].reveal())
-    # print_ln("data_p1[0]: %s", data_p1[0].reveal())
-    # print_ln("data_p0[30487]: %s", data_p0[30487].reveal())
-    # print_ln("data_p1[30487]: %s", data_p1[30487].reveal())
-
-    # for i in range(6):
-    #     idx = samp_num -1 - i
-    #     print_ln("label_p1[%s]: %s", idx, label_p1[idx].reveal())
-
-    data_p0 = MultiArray([n_samples, n_A_features], sfix)
-    data_p1 = MultiArray([n_samples, n_B_features], sfix)
-    label_p1 = MultiArray([3, 1], sfix)
-
-    data_p0.input_from(0)
-    data_p1.input_from(1)
-
-    # print_ln("After load data:")
-    # for idx in range(3):
-    #     print_ln("data_p0[%s]: %s", idx, data_p0[idx].reveal())
-    #     print_ln("data_p1[%s]: %s", idx, data_p1[idx].reveal())
-    #     print_ln("label_p1[%s]: %s", idx, label_p1[idx].reveal())
-
-    data_row = MultiArray([1, n_features], sfix)  # the instance to be explained
-    for i in range(n_features):
-        half_feature = n_A_features
-        if i < half_feature:
-            data_row[0][i] = data_p0[0][i]
-        else:
-            data_row[0][i] = data_p1[0][i - half_feature]
-    # print_ln("data_row: %s", data_row[0].reveal())
-
-    return data_row, data_p0, data_p1
-
-
-def loadTrainedModel(modelPath, inDim, outDim, modelType="LR"):
-    model = None
-    if modelType == "LR":
-        # load trained LR model
-        model = GlobalPreModel_LR(inDim, outDim)
-        model.load_state_dict(torch.load(modelPath))
-    return model
-
-
-def loadRegressiveData(feature_num, neighbor_num, data_row, lrmodel):
-    """ neighboring data
-            data for computing distances, inverse for computing model predictions """
-    data, inverse = __data_inverse(feature_num, num_samples=neighbor_num)
-    print_ln("loadRegressiveData: Shape of the neighboring dataset: %s", data.shape)
-
-    distances = compEncryptNeighborDistances(data, data_row, distance_metric='euclidean')
-    print_ln("loadRegressiveData: Distances: %s; distances.length: %s", distances.reveal(), distances.length)
-
-    yss = compNeighborLabels(lrmodel, inverse)  # np.ndarray [n_sample, n_class]
-    # print_ln("Type of yss: %s; Shape of yss: %s", type(yss), yss.shape)
-    if not np.allclose(yss.sum(axis=1), 1.0):
-        # Returns True if two arrays are element-wise equal within a tolerance
-        print(""" Prediction probabilties do not sum to 1, and
-                        thus does not constitute a probability space.
-                        Check that you classifier outputs probabilities
-                        (Not log probabilities, or actual class predictions). """)
-    return data, yss, distances
 
 def SumSfixArray(sArray):
     sum = sfix(0)
@@ -874,7 +770,7 @@ class BestSplitter():
         # for good splitting) by ancestor nodes and save the information on
         # newly discovered constant features to spare computation on descendant nodes.
 
-        print_ln("BestSplitter: in node_split(), n_visited_features=%s, max_features=%s", n_visited_features, max_features)
+        # print_ln("BestSplitter: in node_split(), n_visited_features=%s, max_features=%s", n_visited_features, max_features)
         while (n_visited_features < max_features):
             n_visited_features += 1
 
@@ -956,9 +852,9 @@ class BestSplitter():
             self.criterion.reset()
             self.criterion.update(best.pos)
             best.impurity_left, best.impurity_right = self.criterion.children_impurity()
-            print_ln("impurity_left=%s, impurity_right=%s", best.impurity_left.reveal(), best.impurity_right.reveal())
+            # print_ln("impurity_left=%s, impurity_right=%s", best.impurity_left.reveal(), best.impurity_right.reveal())
             best.improvement = self.criterion.impurity_improvement(impurity, best.impurity_left, best.impurity_right)
-            print_ln("best.improvement=%s", best.improvement.reveal())
+            # print_ln("best.improvement=%s", best.improvement.reveal())
 
         # Return values
         return best
@@ -1474,6 +1370,39 @@ class BestFirstTreeBuilder():
 
         return 0
 
+def loadPrivateTrainingData(n_features_lst,  Xfilepath, Yfilepath, class_num, n_samples, class2exp):
+    # private data for training regressive model
+    n_features = 0
+    for f in n_features_lst:
+        n_features += f
+    n_parties = len(n_features_lst)
+    privData = list()
+    for pi, nf in enumerate(n_features_lst):
+        if pi == 0:
+            privData.append(MultiArray([1, n_features_lst[pi] + class_num], sfix))
+        else:
+            privData.append(MultiArray([1, n_features_lst[pi]], sfix))
+
+    
+    data_row = MultiArray([1, n_features], sfix)  # the instance to be explained
+
+    # read private data
+    for pi in range(n_parties):
+        privData[pi].input_from(pi)
+
+    # read data_row
+    fCounter = 0
+    for pi, nf in enumerate(n_features_lst):
+        for f in range(nf):
+            data_row[0][fCounter] = privData[pi][0][f]
+            fCounter += 1
+
+    # read yss and X
+    yss = np.genfromtxt(Yfilepath, delimiter=' ').reshape(-1, class_num)
+    X = np.genfromtxt(Xfilepath, delimiter=' ')
+
+    return data_row, X[:n_samples, :n_features], yss[:n_samples, class2exp]
+
 class BaseDecisionTree():
 
     def __init__(self, max_depth=None, min_samples_split=2, min_samples_leaf=1, min_weight_fraction_leaf=0.0,
@@ -1626,29 +1555,36 @@ resetRandomStates(manualseed=47)
 """create dataset info and load dataset"""
 feature_names, class_names = initialFeatureClassNames()
 
-samp_num = 30488
-neighbor_num = 3
-feature_num = 20
+neighbor_num = 6
 class_num = 2
+n_feature_list = [7, 7]
+n_A_features, n_B_features = n_feature_list
 
-data_row, data_p0, data_p1 = loadPrivateTrainingData(n_A_features=10, n_B_features=10, n_samples=1,
-                                                     n_features=feature_num)
+feature_num = sum(n_feature_list)
+class2exp = 0
 
-"""load trained model to be explained """
-lrmodel = loadTrainedModel("/home/xinjian/Desktop/MP-SPDZ/Programs/Source/lime-baseline-files/lrmodel.pt",
-                           inDim=feature_num, outDim=class_num, modelType="LR")
+Xfilepath = "/home/xinjian/Desktop/MP-SPDZ/Player-Data/bank_features_full.csv"
+Yfilepath = "/home/xinjian/Desktop/MP-SPDZ/Player-Data/bank_targets_full.csv"
+data_row, X, yss = loadPrivateTrainingData(n_feature_list, Xfilepath, Yfilepath, class_num=class_num,
+                                              n_samples=neighbor_num, class2exp=class2exp)
+
+# print_ln("data_row: %s", data_row[0].reveal())
+print_ln("X.shape: %s", X.shape)
+
+print_ln("Y.shape: %s", yss.shape)
 
 """ kernel """
 kernel_fn = getKernel(np.sqrt(feature_num) * .75)
 
 """load data for training regressive model"""
-data, yss, distances = loadRegressiveData(feature_num, neighbor_num, data_row, lrmodel)
+distances = compEncryptNeighborDistances(X, data_row, distance_metric='euclidean')
+# print_ln("Distances: %s; distances.length: %s", distances.reveal(), distances.length)
 
 
 
 #########################################################################################################
 myTree = BaseDecisionTree(max_leaf_nodes=6)
-myTree.fit(data, yss, sample_weight=distances)
+myTree.fit(X, yss, sample_weight=distances)
 
 print_ln("myTree.tree_.feature: %s", myTree.tree_.getNodeFeatures())
 print_ln("myTree.tree_.node_count: %s", myTree.tree_.node_count)
