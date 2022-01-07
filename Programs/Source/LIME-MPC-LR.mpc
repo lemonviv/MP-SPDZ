@@ -442,17 +442,19 @@ resetRandomStates(manualseed=47)
 """create dataset info and load dataset"""
 feature_names, class_names = initialFeatureClassNames()
 
-neighbor_num = 2
+neighbor_num = 1
 
-class_num = 2
-n_A_features = 7
-n_B_features = 7
-n_C_features = 6
-feature_num = n_A_features + n_B_features
+
 class2exp = 0
 
+class_num = 2
+n_feature_list = [7, 7, 6]
+n_A_features, n_B_features, n_C_features = n_feature_list
 
-data_row, X, yss = loadPrivateTrainingData([n_A_features, n_B_features], class_num=class_num,
+feature_num = sum(n_feature_list)
+
+
+data_row, X, yss = loadPrivateTrainingData(n_feature_list, class_num=class_num,
                                               n_samples=neighbor_num, class2exp=class2exp)
 # print_ln("data_row: %s", data_row[0].reveal())
 # for i in range(neighbor_num):
