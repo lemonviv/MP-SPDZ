@@ -1,5 +1,6 @@
 import math
 import random
+from typing import Counter
 import numpy as np
 from functools import partial
 from sklearn.utils import check_random_state
@@ -64,31 +65,16 @@ def assign2Dnparr2Container(nparr, container):
         for j in range(y):
             container[i][j] = nparr[i][j]
 
-
-def __data_inverse(feature_num, num_samples, manualseed=47):
-    """Generates a neighborhood around a prediction."""
-    sample_around_instance = False
-    categorical_features = range(feature_num)
-
-    random_state = check_random_state(manualseed)
-    data = random_state.normal(0, 1, num_samples * feature_num).reshape(num_samples, feature_num)  # Normal(0,1)
-    if sample_around_instance:
-        pass
-    else:
-        data = data
-        # first_row = data_row
-    # data[0] = data_row.copy()
-    inverse = data.copy()
-    for column in categorical_features:
-        # process inverse
-        pass
-    # inverse[0] = data_row
-    return data, inverse
-
 def sumArray(sarray):
+    global suma
     suma = sfix(0)
-    for i in sarray:
-        suma = suma + i
+    @for_range_opt(sarray.length)
+    def _(i):
+        global suma
+        suma = suma + sarray[i]
+
+    # for i in sarray:
+    #     suma = suma + i
     return suma
 
 
@@ -104,75 +90,81 @@ def compEncryptNeighborDistances(neighborData, datarow, distance_metric):
     dists = sfix.Array(sample_num)
     temp = sfix.Array(feature_num)
 
-    for i in range(sample_num):
-        for j in range(feature_num):
+    @for_range_opt(sample_num)
+    def _(i):
+        @for_range_opt(feature_num)
+        def _(j):
             temp[j] = (datarow[0][j] - neighborData[i][j]) ** 2
         dists[i] = mpc_math.sqrt(sumArray(temp))
+    # for i in range(sample_num):
+    #     for j in range(feature_num):
+    #         temp[j] = (datarow[0][j] - neighborData[i][j]) ** 2
+    #     dists[i] = mpc_math.sqrt(sumArray(temp))
     return dists
 
 
-class Explanation(object):
-    """Object returned by explainers."""
+# class Explanation(object):
+#     """Object returned by explainers."""
 
-    def __init__(self, feature_num, class_num, feature_names=None, class_names=None):
-        """
-        Args:
-            feature_names: list of feature names
-            class_names: list of class names (only used for classification)
-        """
+#     def __init__(self, feature_num, class_num, feature_names=None, class_names=None):
+#         """
+#         Args:
+#             feature_names: list of feature names
+#             class_names: list of class names (only used for classification)
+#         """
 
-        self.local_exp = {}
-        self.intercept = {}
-        self.score = None
-        self.local_pred = None
-        self.scaled_data = None
-        self.class_names = class_names
-        self.feature_names = feature_names
-        if class_names is None:
-            self.class_names = [str(x) for x in range(class_num)]
-        if feature_names is None:
-            self.feature_names = [str(x) for x in range(feature_num)]
+#         self.local_exp = {}
+#         self.intercept = {}
+#         self.score = None
+#         self.local_pred = None
+#         self.scaled_data = None
+#         self.class_names = class_names
+#         self.feature_names = feature_names
+#         if class_names is None:
+#             self.class_names = [str(x) for x in range(class_num)]
+#         if feature_names is None:
+#             self.feature_names = [str(x) for x in range(feature_num)]
 
-        self.predict_proba = None  # the prediction for the instance being explained
+#         self.predict_proba = None  # the prediction for the instance being explained
 
-    def map_exp_ids(self, exp):
-        """Maps ids to feature names.
-        Args:
-            exp: list of tuples [(id, weight), (id,weight)]
-        Returns:
-            list of tuples (feature_name, weight)
-        """
-        return [(self.feature_names[x[0]], x[1]) for x in exp]
+#     def map_exp_ids(self, exp):
+#         """Maps ids to feature names.
+#         Args:
+#             exp: list of tuples [(id, weight), (id,weight)]
+#         Returns:
+#             list of tuples (feature_name, weight)
+#         """
+#         return [(self.feature_names[x[0]], x[1]) for x in exp]
 
-    def available_labels(self):
-        """
-            Returns the list of classification labels for which we have any explanations.
-        """
-        ans = self.local_exp.keys()
-        return list(ans)
+#     def available_labels(self):
+#         """
+#             Returns the list of classification labels for which we have any explanations.
+#         """
+#         ans = self.local_exp.keys()
+#         return list(ans)
 
-    def as_list(self, label=1, **kwargs):
-        """Returns the explanation as a list.
-        Args:
-            label: desired label. If you ask for a label for which an
-                explanation wasn't computed, will throw an exception.
-                Will be ignored for regression explanations.
-            kwargs: keyword arguments, passed to domain_mapper
-        Returns:
-            list of tuples (representation, weight), where representation is
-            given by domain_mapper. Weight is a float.
-        """
-        label_to_use = label
-        ans = self.map_exp_ids(self.local_exp[label_to_use], **kwargs)
+#     def as_list(self, label=1, **kwargs):
+#         """Returns the explanation as a list.
+#         Args:
+#             label: desired label. If you ask for a label for which an
+#                 explanation wasn't computed, will throw an exception.
+#                 Will be ignored for regression explanations.
+#             kwargs: keyword arguments, passed to domain_mapper
+#         Returns:
+#             list of tuples (representation, weight), where representation is
+#             given by domain_mapper. Weight is a float.
+#         """
+#         label_to_use = label
+#         ans = self.map_exp_ids(self.local_exp[label_to_use], **kwargs)
 
-        return ans
+#         return ans
 
-    def as_map(self):
-        """Returns the map of explanations.
-        Returns:
-            Map from label to list of tuples (feature_id, weight).
-        """
-        return self.local_exp
+#     def as_map(self):
+#         """Returns the map of explanations.
+#         Returns:
+#             Map from label to list of tuples (feature_id, weight).
+#         """
+#         return self.local_exp
 
 
 class RidgeSGD(object):
@@ -227,21 +219,43 @@ class RidgeSGD(object):
 
             return res[0]
 
-        def innerProduct(arr1, arr2, length, isSecret=True):
-            product = sfix(0) if isSecret else cfix(0)
-            for i in range(length):
-                product = product + arr1[i] * arr2[i]
+        def innerProduct(arr1, arr2, length):
+            global product, counter 
+            counter = 0
+            product = sfix(0) 
+            @for_range_opt(length)
+            def _(i):
+                global product, counter 
+                product = product + arr1[counter] * arr2[counter]
+                counter = counter + 1
+            # for i in range(length):
+            #     product = product + arr1[i] * arr2[i]
             return product
 
-        def arrDotScalar(arr, scalar, length, isSecret=True):
-            result = sfix.Array(length) if isSecret else cfix.Array(length)
-            for i in range(length):
-                result[i] = arr[i] * scalar
+        def arrDotScalar(arr, scalar, length):
+            result = sfix.Array(length)
+            global counter 
+            counter = 0
+            @for_range_opt(length)
+            def _(i):
+                global counter 
+                result[i] = arr[counter] * scalar
+                counter = counter + 1
+
+            # for i in range(length):
+            #     result[i] = arr[i] * scalar
             return result
 
         def assignArray2MatrixRow(matrix, arr, length, base=0):
-            for i in range(length):
-                matrix[base][i] = arr[i]
+            # for i in range(length):
+            #     matrix[base][i] = arr[i]
+            global counter 
+            counter = 0
+            @for_range_opt(length)
+            def _(i):
+                global counter
+                matrix[base][i] = arr[counter]
+                counter = counter + 1
 
         def l1Gradients(weights):
             size = len(weights)
@@ -259,6 +273,7 @@ class RidgeSGD(object):
         # As in SGD, the alpha is scaled by n_samples.
         alpha_scaled = float(alpha) / n_samples
 
+        global weights, previous_weights
         weights = sfix.Array(n_features)
         previous_weights = sfix.Array(n_features)
         sum_gradient = sfix.Array(n_features)
@@ -279,7 +294,7 @@ class RidgeSGD(object):
                 idx = int(rng.rand(1) * n_samples)
                 entry = X[idx]
                 seen.add(idx)
-                p = innerProduct(entry, weights, n_features, isSecret=True) + intercept  # inner product of 1-D arrays
+                p = innerProduct(entry, weights, n_features) + intercept  # inner product of 1-D arrays
                 gradient = p - y[idx]
                 if sample_weight is not None:
                     gradient = gradient * sample_weight[idx]
@@ -302,12 +317,18 @@ class RidgeSGD(object):
                 # weights = weights - sum_gradient * (step_size / len(seen))
                 weights = weights + arrDotScalar(sum_gradient, - step_size / len(seen), n_features)
             # The iterations will stop when max(change in weights) / max(weights) < tol.
+            global max_change, max_weight, counter
             max_change = sfix(0)
             max_weight = sfix(0)
-            for i in range(n_features):
-                max_weight = fmax(max_weight, abs(weights[i]))
-                max_change = fmax(max_change, abs(weights[i] - previous_weights[i]))
-                previous_weights[i] = weights[i]
+            counter = 0
+            @for_range_opt(n_features)
+            def _(i):
+            # for i in range(n_features):
+                global max_change, max_weight, weights, previous_weights, counter
+                max_weight = fmax(max_weight, abs(weights[counter]))
+                max_change = fmax(max_change, abs(weights[counter] - previous_weights[counter]))
+                previous_weights[i] = weights[counter]
+                counter = counter + 1
 
             # if (max_weight != 0 and max_change/max_weight <= tol) or (max_weight == 0 and max_change ==0):
             @if_((max_change / max_weight <= tol).reveal())
@@ -395,9 +416,7 @@ def resetRandomStates(manualseed=47):
 
 def loadPrivateTrainingData(n_features_lst, class_num, n_samples, class2exp):
     # private data for training regressive model
-    n_features = 0
-    for f in n_features_lst:
-        n_features += f
+    n_features = sum(n_features_lst)
     n_parties = len(n_features_lst)
     privData = list()
     for pi, nf in enumerate(n_features_lst):
@@ -414,8 +433,11 @@ def loadPrivateTrainingData(n_features_lst, class_num, n_samples, class2exp):
         privData[pi].input_from(pi)
 
     # read yss
-    for i in range(n_samples):
+    @for_range_parallel(5, n_samples)
+    def _(i):
         yss[i] = privData[0][i][n_features_lst[0]+class2exp]
+    # for i in range(n_samples):
+    #     yss[i] = privData[0][i][n_features_lst[0]+class2exp]
 
     # read data_row
     fCounter = 0
@@ -440,16 +462,15 @@ print_ln(" ------------------------------ MAIN BODY ----------------------------
 resetRandomStates(manualseed=47)
 
 """create dataset info and load dataset"""
-feature_names, class_names = initialFeatureClassNames()
+# feature_names, class_names = initialFeatureClassNames()
 
-neighbor_num = 1
-
-
-class2exp = 0
+neighbor_num = 2
 
 class_num = 2
+class2exp = 0
+
 n_feature_list = [7, 7, 6]
-n_A_features, n_B_features, n_C_features = n_feature_list
+# n_A_features, n_B_features, n_C_features = n_feature_list
 
 feature_num = sum(n_feature_list)
 
@@ -474,7 +495,7 @@ print_ln("Distances: %s; distances.length: %s", distances.reveal(), distances.le
 # base.explain_instance_with_data(data, yss, neighbor_num, feature_num, distances, label)
 
 weights = kernel_fn(distances)  # sfix.Array(sample_num)
-ridge = RidgeSGD(alpha=1, fit_intercept=True, max_iter=1000, penalty="l2")
+ridge = RidgeSGD(alpha=1, fit_intercept=True, max_iter=200, penalty="l2")
 ridge.ridgeSGDFit(X, yss, n_samples=neighbor_num, n_features=feature_num, sample_weight=weights)
 ridge.printFittedModel(feature_num)
 

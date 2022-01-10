@@ -1555,10 +1555,10 @@ resetRandomStates(manualseed=47)
 """create dataset info and load dataset"""
 feature_names, class_names = initialFeatureClassNames()
 
-neighbor_num = 6
+neighbor_num = 2
 class_num = 2
-n_feature_list = [7, 7]
-n_A_features, n_B_features = n_feature_list
+n_feature_list = [7, 7, 6]
+# n_A_features, n_B_features = n_feature_list
 
 feature_num = sum(n_feature_list)
 class2exp = 0
