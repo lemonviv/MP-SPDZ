@@ -330,7 +330,7 @@ distances = compEncryptNeighborDistances(X, data_row, distance_metric='euclidean
 print_ln("Distances: %s; distances.length: %s", distances.reveal(), distances.length)
 
 weights = kernel_fn(distances)  # sfix.Array(sample_num)
-ridge = RidgeSGD(alpha=1, fit_intercept=True, max_iter=200, penalty="l2")
+ridge = RidgeSGD(alpha=1, fit_intercept=True, max_iter=10, penalty="l2")
 ridge.ridgeSGDFit(X, yss, n_samples=neighbor_num, n_features=feature_num, sample_weight=weights)
 ridge.printFittedModel(feature_num)
 
