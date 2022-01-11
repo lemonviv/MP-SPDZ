@@ -132,56 +132,59 @@ class RidgeSGD(object):
             return res[0]
 
         def innerProduct(arr1, arr2, length):
-            global product, counter 
-            counter = 0
+            global product 
             product = sfix(0) 
             @for_range_opt(length)
             def _(i):
                 global product, counter 
-                product = product + arr1[counter] * arr2[counter]
-                counter = counter + 1
+                product = product + arr1[i] * arr2[i]
             # for i in range(length):
             #     product = product + arr1[i] * arr2[i]
             return product
 
-        def arrDotScalar(arr, scalar, length):
+        def arrDotScalar(arr, scalar):
+            length = len(arr)
             result = sfix.Array(length)
-            global counter 
             counter = 0
-            @for_range_opt(length)
+            @for_range_parallel(5, length)
             def _(i):
-                global counter 
-                result[i] = arr[counter] * scalar
-                counter = counter + 1
+                result[i] = arr[i] * scalar
 
             # for i in range(length):
             #     result[i] = arr[i] * scalar
             return result
 
+        def eleArrAdd(arr1, arr2):
+            length = len(arr1)
+            assert len(arr1)==len(arr2), "In eleArrAdd(), two arrays should have the same lengths! Got {} and {}".format(len(arr1), len(arr2))
+            result = sfix.Array(length)
+            @for_range_parallel(5, length)
+            def _(i):
+                result[i] = arr1[i] + arr2[i]
+
+            return result
+
         def assignArray2MatrixRow(matrix, arr, length, base=0):
             # for i in range(length):
             #     matrix[base][i] = arr[i]
-            global counter 
-            counter = 0
-            @for_range_opt(length)
+            @for_range_parallel(5, length)
             def _(i):
-                global counter
-                matrix[base][i] = arr[counter]
-                counter = counter + 1
+                matrix[base][i] = arr[i]
 
         def l1Gradients(weights):
             size = len(weights)
             global gradients, i, myweights
             myweights = weights
             gradients = sfix.Array(size)
-            for i in range(size):
+            @for_range_parallel(5, size)
+            def _(i):
+            # for i in range(size):
                 gradients[i] = 1
                 @if_((myweights[i] < 0).reveal())
                 def _():
-                    global gradients, i
                     gradients[i] = -1
             return gradients
-
+ 
         # As in SGD, the alpha is scaled by n_samples.
         alpha_scaled = float(alpha) / n_samples
 
@@ -189,7 +192,7 @@ class RidgeSGD(object):
         weights = sfix.Array(n_features)
         previous_weights = sfix.Array(n_features)
         sum_gradient = sfix.Array(n_features)
-        gradient_memory = sfix.Matrix(n_samples, n_features)
+        gradient_memory = MultiArray([n_samples, n_features], sfix)
         intercept = sfix(0)
         intercept_sum_gradient = sfix(0)
         intercept_decay = 1.0
@@ -211,12 +214,12 @@ class RidgeSGD(object):
                 if sample_weight is not None:
                     gradient = gradient * sample_weight[idx]
                 if penalty == "l2":
-                    update = arrDotScalar(entry, gradient, n_features) + arrDotScalar(weights, alpha_scaled, n_features)
+                    update = eleArrAdd(arrDotScalar(entry, gradient), arrDotScalar(weights, alpha_scaled))
                 elif penalty == "l1":
                     l1gradients = l1Gradients(weights)
-                    update = arrDotScalar(entry, gradient, n_features) + arrDotScalar(l1gradients, alpha_scaled, n_features)
-                gradient_correction = update + arrDotScalar(gradient_memory[idx], -1, n_features)
-                sum_gradient = sum_gradient + gradient_correction
+                    update = eleArrAdd(arrDotScalar(entry, gradient), arrDotScalar(l1gradients, alpha_scaled))
+                gradient_correction = eleArrAdd(update, arrDotScalar(gradient_memory[idx], -1))
+                sum_gradient = eleArrAdd(sum_gradient, gradient_correction)
                 assignArray2MatrixRow(gradient_memory, update, n_features, base=idx)
 
                 if fit_intercept:
@@ -227,29 +230,30 @@ class RidgeSGD(object):
                     intercept = intercept - (intercept_sum_gradient * (step_size / len(seen) * intercept_decay))
 
                 # weights = weights - sum_gradient * (step_size / len(seen))
-                weights = weights + arrDotScalar(sum_gradient, - step_size / len(seen), n_features)
+                weights = eleArrAdd(weights, arrDotScalar(sum_gradient, - step_size / len(seen)))
+
             # The iterations will stop when max(change in weights) / max(weights) < tol.
-            global max_change, max_weight, counter
-            max_change = sfix(0)
-            max_weight = sfix(0)
-            counter = 0
-            @for_range_opt(n_features)
+            # global max_change, max_weight, counter
+            # max_change = sfix(0)
+            # max_weight = sfix(0)
+            # counter = 0
+            @for_range_parallel(5, n_features)
             def _(i):
             # for i in range(n_features):
                 global max_change, max_weight, weights, previous_weights, counter
-                max_weight = fmax(max_weight, abs(weights[counter]))
-                max_change = fmax(max_change, abs(weights[counter] - previous_weights[counter]))
-                previous_weights[i] = weights[counter]
-                counter = counter + 1
+                # max_weight = fmax(max_weight, abs(weights[counter]))
+                # max_change = fmax(max_change, abs(weights[counter] - previous_weights[counter]))
+                previous_weights[i] = weights[i]
+                # counter = counter + 1
 
             # if (max_weight != 0 and max_change/max_weight <= tol) or (max_weight == 0 and max_change ==0):
-            @if_((max_change / max_weight <= tol).reveal())
-            def _():
-                global stop_flag
-                stop_flag = 1
+            # @if_((max_change / max_weight <= tol).reveal())
+            # def _():
+            #     global stop_flag
+            #     stop_flag = 1
 
-            if stop_flag:
-                break
+            # if stop_flag:
+            #     break
         return weights, intercept, epoch + 1
 
 
@@ -323,13 +327,15 @@ data_row, X, yss = loadPrivateTrainingData(n_feature_list, class_num=class_num,
 # print_ln("len(X): %s", len(X))
 
 """ kernel """
-kernel_fn = getKernel(np.sqrt(feature_num) * .75)
+kernel_fn = getKernel(math.sqrt(feature_num) * .75)
 
 """load data for training regressive model"""
 distances = compEncryptNeighborDistances(X, data_row, distance_metric='euclidean')
 print_ln("Distances: %s; distances.length: %s", distances.reveal(), distances.length)
 
 weights = kernel_fn(distances)  # sfix.Array(sample_num)
+
+
 ridge = RidgeSGD(alpha=1, fit_intercept=True, max_iter=10, penalty="l2")
 ridge.ridgeSGDFit(X, yss, n_samples=neighbor_num, n_features=feature_num, sample_weight=weights)
 ridge.printFittedModel(feature_num)
