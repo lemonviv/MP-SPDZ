@@ -9,31 +9,6 @@ from Compiler.types import sint, sfix, MultiArray, cfix
 from Compiler.library import print_ln, for_range, start_timer, stop_timer, multithread, print_ln_if
 from Compiler import mpc_math, ml, program
 
-def initialFeatureClassNames():
-    feature_names = ["age",
-                     "job",
-                     "marital",
-                     "education",
-                     "default",
-                     "housing",
-                     "loan",
-                     "contact",
-                     "month",
-                     "day_of_week",
-                     "duration",
-                     "campaign",
-                     "pdays",
-                     "previous",
-                     "poutcome",
-                     "emp.var.rate",
-                     "cons.price.idx",
-                     "cons.conf.idx",
-                     "euribor3m",
-                     "nr.employed"]
-
-    class_names = ["NoDeposit", "YesDeposit"]
-    return feature_names, class_names
-
 
 def getKernel(kernel_width):
     def kernel(dists, kernel_width):
@@ -102,69 +77,6 @@ def compEncryptNeighborDistances(neighborData, datarow, distance_metric):
     #     dists[i] = mpc_math.sqrt(sumArray(temp))
     return dists
 
-
-# class Explanation(object):
-#     """Object returned by explainers."""
-
-#     def __init__(self, feature_num, class_num, feature_names=None, class_names=None):
-#         """
-#         Args:
-#             feature_names: list of feature names
-#             class_names: list of class names (only used for classification)
-#         """
-
-#         self.local_exp = {}
-#         self.intercept = {}
-#         self.score = None
-#         self.local_pred = None
-#         self.scaled_data = None
-#         self.class_names = class_names
-#         self.feature_names = feature_names
-#         if class_names is None:
-#             self.class_names = [str(x) for x in range(class_num)]
-#         if feature_names is None:
-#             self.feature_names = [str(x) for x in range(feature_num)]
-
-#         self.predict_proba = None  # the prediction for the instance being explained
-
-#     def map_exp_ids(self, exp):
-#         """Maps ids to feature names.
-#         Args:
-#             exp: list of tuples [(id, weight), (id,weight)]
-#         Returns:
-#             list of tuples (feature_name, weight)
-#         """
-#         return [(self.feature_names[x[0]], x[1]) for x in exp]
-
-#     def available_labels(self):
-#         """
-#             Returns the list of classification labels for which we have any explanations.
-#         """
-#         ans = self.local_exp.keys()
-#         return list(ans)
-
-#     def as_list(self, label=1, **kwargs):
-#         """Returns the explanation as a list.
-#         Args:
-#             label: desired label. If you ask for a label for which an
-#                 explanation wasn't computed, will throw an exception.
-#                 Will be ignored for regression explanations.
-#             kwargs: keyword arguments, passed to domain_mapper
-#         Returns:
-#             list of tuples (representation, weight), where representation is
-#             given by domain_mapper. Weight is a float.
-#         """
-#         label_to_use = label
-#         ans = self.map_exp_ids(self.local_exp[label_to_use], **kwargs)
-
-#         return ans
-
-#     def as_map(self):
-#         """Returns the map of explanations.
-#         Returns:
-#             Map from label to list of tuples (feature_id, weight).
-#         """
-#         return self.local_exp
 
 
 class RidgeSGD(object):
@@ -341,74 +253,6 @@ class RidgeSGD(object):
         return weights, intercept, epoch + 1
 
 
-class LimeBase(object):
-    """Class for learning a locally linear sparse model from perturbed data"""
-
-    def __init__(self, kernel_fn, verbose=True):
-        """ Args:
-            kernel_fn: function that transforms an array of distances into an
-                        array of proximity values (floats).
-            verbose: if true, print local prediction values from linear model.
-        """
-        self.kernel_fn = kernel_fn
-        self.verbose = verbose
-
-    def explain_instance_with_data(self, neighborhood_data, neighborhood_labels, neighbor_num, feature_num, distances,
-                                   label, max_iter=10):
-        """Takes perturbed data, labels and distances, returns explanation.
-        Args:
-            neighborhood_data: perturbed data, 2d array. first element is
-                               assumed to be the original data point.
-            neighborhood_labels: corresponding perturbed labels. np.ndarray [n_sample, n_class]
-            distances: distances to original data point.
-            label: label for which we want an explanation
-
-        Returns:
-            (intercept, exp, score):
-            intercept is a float.
-            exp is a sorted list of tuples, where each tuple (x,y) corresponds
-            to the feature id (x) and the local weight (y). The list is sorted
-            by decreasing absolute value of y.
-            score is the R^2 value of the returned explanation
-        """
-        weights = self.kernel_fn(distances)  # sfix.Array(sample_num)
-        print_ln("Sample weights: %s; weights.length: %s", weights.reveal(), weights.length)
-        print_ln("Explain label: %s", label)
-
-        Y = cfix.Array(neighbor_num)
-        Y.assign(neighborhood_labels[:, label].tolist())
-
-        X = cfix.Matrix(neighbor_num, feature_num)
-        assign2Dnparr2Container(neighborhood_data, X)
-
-        # "-----------------------------------------"
-        # weights = sfix.Array(6)
-        # weights.assign([0.1, 0.2, 0.3, 0.4, 0.5, 0.6])
-        # print_ln("Sample weights: %s", weights.reveal())
-
-        # Y = cfix.Array(6)
-        # Y.assign([ 3.22863539,  7.97319784,  7.33683503,  0.46354207, -0.42393931, 5.57440603])
-        # print_ln("Y: %s", Y)
-
-        # X = sfix.Matrix(6, 4)
-        # data = np.array([[ 0.19726657,  0.47634482 , 0.13639886 ,-1.05166339],
-        # [ 1.16746643, -1.31873322,  0.84062791 , 0.40889779],
-        # [ 0.5935143,  -1.21112369,  1.45865347 ,-0.11789185],
-        # [-1.10569736 , 1.99502655 ,-1.34626636 ,-0.89844852],
-        # [ 0.68351378 ,-0.7216402 , -0.1710832 , -1.16615615],
-        # [-1.02646512 ,-0.55733092,  0.83821922 , 0.22304532]])
-        # assign2Dnparr2Container(data, X)
-        # neighbor_num = 6
-        # feature_num = 4
-        # "-----------------------------------------"
-        ridge = RidgeSGD(alpha=1, fit_intercept=True, max_iter=max_iter)
-        ridge.ridgeSGDFit(X, Y, n_samples=neighbor_num, n_features=feature_num, sample_weight=weights)
-
-        if self.verbose:
-            ridge.printFittedModel(feature_num)
-        return ridge.coef_, ridge.intercept_, ridge.n_iter_
-
-
 def resetRandomStates(manualseed=47):
     random.seed(manualseed)
     np.random.seed(manualseed)
@@ -461,11 +305,6 @@ print_ln(" ------------------------------ MAIN BODY ----------------------------
 # initialize some parameters
 resetRandomStates(manualseed=47)
 
-"""create dataset info and load dataset"""
-# feature_names, class_names = initialFeatureClassNames()
-
-neighbor_num = 2
-
 class_num = 2
 class2exp = 0
 
@@ -474,7 +313,7 @@ n_feature_list = [7, 7, 6]
 
 feature_num = sum(n_feature_list)
 
-
+neighbor_num = 4000
 data_row, X, yss = loadPrivateTrainingData(n_feature_list, class_num=class_num,
                                               n_samples=neighbor_num, class2exp=class2exp)
 # print_ln("data_row: %s", data_row[0].reveal())
@@ -490,17 +329,10 @@ kernel_fn = getKernel(np.sqrt(feature_num) * .75)
 distances = compEncryptNeighborDistances(X, data_row, distance_metric='euclidean')
 print_ln("Distances: %s; distances.length: %s", distances.reveal(), distances.length)
 
-# ret_exp = Explanation(feature_num, class_num, feature_names, class_names)
-# base = LimeBase(kernel_fn, verbose=True)
-# base.explain_instance_with_data(data, yss, neighbor_num, feature_num, distances, label)
-
 weights = kernel_fn(distances)  # sfix.Array(sample_num)
 ridge = RidgeSGD(alpha=1, fit_intercept=True, max_iter=200, penalty="l2")
 ridge.ridgeSGDFit(X, yss, n_samples=neighbor_num, n_features=feature_num, sample_weight=weights)
 ridge.printFittedModel(feature_num)
-
-
-
 
 
 print_ln(" ------------------------------ FINISHED ------------------------------ ")
