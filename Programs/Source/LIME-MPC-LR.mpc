@@ -8,6 +8,7 @@ from sklearn.utils import check_random_state
 from Compiler.types import sint, sfix, MultiArray, cfix
 from Compiler.library import print_ln, for_range, start_timer, stop_timer, multithread, print_ln_if
 from Compiler import mpc_math, ml, program
+from Compiler.program import Program
 
 
 def getKernel(kernel_width):
@@ -19,12 +20,14 @@ def getKernel(kernel_width):
             Returns:
                 weights: sfix.Array(sample_num)
         """
+        print_ln(">> kernel")
         weights = sfix.Array(dists.length)
 
         @for_range_parallel(5, dists.length)
         def _(i):
             weights[i] = mpc_math.sqrt(mpc_math.pow_fx(math.e, (dists[i] ** 2) * (-1) * (1 / (kernel_width ** 2))))
 
+        print_ln("<< kernel")
         return weights
 
     kernel_fn = partial(kernel, kernel_width=kernel_width)  # fix the value of kernel_width
@@ -61,6 +64,7 @@ def compEncryptNeighborDistances(neighborData, datarow, distance_metric):
         Returns:
             dists: sfix.Array(sample_num)
     """
+    print_ln(">> compEncryptNeighborDistances")
     sample_num = neighbor_num
     dists = sfix.Array(sample_num)
     temp = sfix.Array(feature_num)
@@ -75,6 +79,8 @@ def compEncryptNeighborDistances(neighborData, datarow, distance_metric):
     #     for j in range(feature_num):
     #         temp[j] = (datarow[0][j] - neighborData[i][j]) ** 2
     #     dists[i] = mpc_math.sqrt(sumArray(temp))
+
+    print_ln("<< compEncryptNeighborDistances")
     return dists
 
 
@@ -87,14 +93,14 @@ class RidgeSGD(object):
         self.tol = tol
         self.coef_ = None
         self.intercept_ = None
-        self.n_iter_ = None
+        self.n_iter_ = self.max_iter
         self.penalty = penalty
 
     def ridgeSGDFit(self, X, y, n_samples, n_features, sample_weight=None):
-        self.coef_, self.intercept_, self.n_iter_ = self.sag_solver(X, y, n_samples, n_features, self.fit_intercept,
+        self.coef_, self.intercept_ = self.sag_solver(X, y, n_samples, n_features, self.fit_intercept,
                                                                     sample_weight, self.alpha, max_iter=self.max_iter,
                                                                     tol=self.tol, penalty=self.penalty)
-        return self.coef_, self.intercept_, self.n_iter_
+        return self.coef_, self.intercept_
 
     def printFittedModel(self, n_features):
         for i in range(n_features):
@@ -116,7 +122,6 @@ class RidgeSGD(object):
                 intercept: sfix
                 n_iter: number of epochs. int
         """
-
         def fmax(a, b):
             # Information has to be passed out via container types
             res = sfix.Array(1)
@@ -184,7 +189,10 @@ class RidgeSGD(object):
                 def _():
                     gradients[i] = -1
             return gradients
- 
+
+        print_ln(">> sag_solver")
+        print_ln("The max_iter is set to %s", max_iter)
+
         # As in SGD, the alpha is scaled by n_samples.
         alpha_scaled = float(alpha) / n_samples
 
@@ -203,8 +211,9 @@ class RidgeSGD(object):
         L = max_squared_sum + int(fit_intercept) + alpha_scaled
         step_size = 1. / L
         stop_flag = 0
-
-        for epoch in range(max_iter):
+        iterCounter = 0
+        # for epoch in range(max_iter):
+        while(True):
             for k in range(n_samples):
                 idx = int(rng.rand(1) * n_samples)
                 entry = X[idx]
@@ -231,6 +240,13 @@ class RidgeSGD(object):
 
                 # weights = weights - sum_gradient * (step_size / len(seen))
                 weights = eleArrAdd(weights, arrDotScalar(sum_gradient, - step_size / len(seen)))
+                iterCounter += 1
+                if iterCounter > max_iter:
+                    stop_flag = 1
+                    break
+
+            if stop_flag:
+                break
 
             # The iterations will stop when max(change in weights) / max(weights) < tol.
             # global max_change, max_weight, counter
@@ -251,10 +267,9 @@ class RidgeSGD(object):
             # def _():
             #     global stop_flag
             #     stop_flag = 1
-
-            # if stop_flag:
-            #     break
-        return weights, intercept, epoch + 1
+        print_ln("%s iterations are used for SGD.", iterCounter-1)
+        print_ln("<< sag_solver")
+        return weights, intercept
 
 
 def resetRandomStates(manualseed=47):
@@ -264,6 +279,7 @@ def resetRandomStates(manualseed=47):
 
 def loadPrivateTrainingData(n_features_lst, class_num, n_samples, class2exp):
     # private data for training regressive model
+    print_ln(">> loadPrivateTrainingData")
     n_features = sum(n_features_lst)
     n_parties = len(n_features_lst)
     privData = list()
@@ -301,11 +317,12 @@ def loadPrivateTrainingData(n_features_lst, class_num, n_samples, class2exp):
             for f in range(nf):
                 X[s][fCounter] = privData[pi][s][f]
                 fCounter += 1
-
+    print_ln("<< loadPrivateTrainingData")
     return data_row, X, yss
 
 
 print_ln(" ------------------------------ MAIN BODY ------------------------------ ")
+# Program.use_edabit(True)
 # initialize some parameters
 resetRandomStates(manualseed=47)
 
@@ -317,7 +334,7 @@ n_feature_list = [7, 7, 6]
 
 feature_num = sum(n_feature_list)
 
-neighbor_num = 100
+neighbor_num = 10
 data_row, X, yss = loadPrivateTrainingData(n_feature_list, class_num=class_num,
                                               n_samples=neighbor_num, class2exp=class2exp)
 # print_ln("data_row: %s", data_row[0].reveal())
@@ -331,10 +348,9 @@ kernel_fn = getKernel(math.sqrt(feature_num) * .75)
 
 """load data for training regressive model"""
 distances = compEncryptNeighborDistances(X, data_row, distance_metric='euclidean')
-print_ln("Distances: %s; distances.length: %s", distances.reveal(), distances.length)
+print_ln("distances.length: %s", distances.length)
 
 weights = kernel_fn(distances)  # sfix.Array(sample_num)
-
 
 ridge = RidgeSGD(alpha=1, fit_intercept=True, max_iter=10, penalty="l2")
 ridge.ridgeSGDFit(X, yss, n_samples=neighbor_num, n_features=feature_num, sample_weight=weights)
