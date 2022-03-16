@@ -211,13 +211,16 @@ def compute_gini(clients_statistics, clients_left_nums, clients_right_nums, glob
             left_impurity[0] = left_impurity[0] - (left_probs[j] * left_probs[j])
             right_impurity[0] = right_impurity[0] - (right_probs[j] * right_probs[j])
 
+        splits_impurity[i][1] = left_impurity[0]
+        splits_impurity[i][2] = right_impurity[0]
+
         # add weighted impurity on 2020/01/07
-        #print_ln('left_impurity[0] before weighted = %s', left_impurity[0].reveal())
-        #print_ln('right_impurity[0] before weighed = %s', right_impurity[0].reveal())
+        # print_ln('left_impurity[0] before weighted = %s', left_impurity[0].reveal())
+        # print_ln('right_impurity[0] before weighed = %s', right_impurity[0].reveal())
         left_impurity[0] = (left_impurity[0] * clients_left_nums[i]) / (clients_left_nums[i] + clients_right_nums[i])
         right_impurity[0] = (right_impurity[0] * clients_right_nums[i]) / (clients_left_nums[i] + clients_right_nums[i])
-        #print_ln('left_impurity[0] after weighted = %s', left_impurity[0].reveal())
-        #print_ln('right_impurity[0] after weighed = %s', right_impurity[0].reveal())
+        # print_ln('left_impurity[0] after weighted = %s', left_impurity[0].reveal())
+        # print_ln('right_impurity[0] after weighed = %s', right_impurity[0].reveal())
 
         @if_(mpc_math.abs_fx(left_impurity[0]).reveal() < OVERFLOW_THRESHOLD)
         def _():
@@ -228,11 +231,10 @@ def compute_gini(clients_statistics, clients_left_nums, clients_right_nums, glob
             right_impurity[0] = 0
 
         splits_impurity[i][0] = left_impurity[0] + right_impurity[0]
-        splits_impurity[i][1] = left_impurity[0]
-        splits_impurity[i][2] = right_impurity[0]
-        #print_ln('splits_impurity[%s][0] = %s', i, splits_impurity[i][0].reveal())
-        #print_ln('splits_impurity[%s][1] = %s', i, splits_impurity[i][1].reveal())
-        #print_ln('splits_impurity[%s][2] = %s', i, splits_impurity[i][2].reveal())
+
+        print_ln('splits_impurity[%s][0] = %s', i, splits_impurity[i][0].reveal())
+        print_ln('splits_impurity[%s][1] = %s', i, splits_impurity[i][1].reveal())
+        print_ln('splits_impurity[%s][2] = %s', i, splits_impurity[i][2].reveal())
 
     return splits_impurity
 
@@ -248,18 +250,21 @@ def compute_variance(clients_statistics, clients_left_nums, clients_right_nums, 
     def _(i):
         left_variance[0] = 0.0
         right_variance[0] = 0.0
-        #print_ln('clients_statistics[%s][0] = %s', i, clients_statistics[i][0].reveal())
-        #print_ln('clients_statistics[%s][1] = %s', i, clients_statistics[i][1].reveal())
-        #print_ln('clients_statistics[%s][2] = %s', i, clients_statistics[i][2].reveal())
-        #print_ln('clients_statistics[%s][3] = %s', i, clients_statistics[i][3].reveal())
+        # print_ln('clients_statistics[%s][0] = %s', i, clients_statistics[i][0].reveal())
+        # print_ln('clients_statistics[%s][1] = %s', i, clients_statistics[i][1].reveal())
+        # print_ln('clients_statistics[%s][2] = %s', i, clients_statistics[i][2].reveal())
+        # print_ln('clients_statistics[%s][3] = %s', i, clients_statistics[i][3].reveal())
 
-        #print_ln('clients_left_nums[%s] = %s, clients_right_nums[%s] = %s', i, clients_left_nums[i].reveal(), i, clients_right_nums[i].reveal())
+        # print_ln('clients_left_nums[%s] = %s, clients_right_nums[%s] = %s', i, clients_left_nums[i].reveal(), i, clients_right_nums[i].reveal())
 
         left_variance[0] = (clients_statistics[i][2] / clients_left_nums[i]) - (clients_statistics[i][0] / clients_left_nums[i]) ** 2
         right_variance[0] = (clients_statistics[i][3] / clients_right_nums[i]) - (clients_statistics[i][1] / clients_right_nums[i]) ** 2
 
-        #print_ln('left_variance[0] = %s', left_variance[0].reveal())
-        #print_ln('right_variance[0] = %s', right_variance[0].reveal())
+        # print_ln('left_variance[0] = %s', left_variance[0].reveal())
+        # print_ln('right_variance[0] = %s', right_variance[0].reveal())
+
+        splits_impurity[i][1] = left_variance[0]
+        splits_impurity[i][2] = right_variance[0]
 
         left_variance[0] = (left_variance[0] * clients_left_nums[i]) / (clients_left_nums[i] + clients_right_nums[i])
         right_variance[0] = (right_variance[0] * clients_right_nums[i]) / (clients_left_nums[i] + clients_right_nums[i])
@@ -273,8 +278,6 @@ def compute_variance(clients_statistics, clients_left_nums, clients_right_nums, 
             right_variance[0] = 0
 
         splits_impurity[i][0] = left_variance[0] + right_variance[0]
-        splits_impurity[i][1] = left_variance[0]
-        splits_impurity[i][2] = right_variance[0]
 
     return splits_impurity
 
