@@ -24,7 +24,7 @@ def getKernel(kernel_width):
         print_ln(">> kernel")
         weights = sfix.Array(dists.length)
 
-        @for_range(dists.length)
+        @for_range_parallel(5, dists.length)
         def _(i):
             weights[i] = mpc_math.sqrt(mpc_math.pow_fx(math.e, (dists[i] ** 2) * (-1) * (1 / (kernel_width ** 2))))
 
@@ -47,7 +47,7 @@ def assign2Dnparr2Container(nparr, container):
 def sumArray(sarray):
     global suma
     suma = sfix(0)
-    @for_range(sarray.length)
+    @for_range_opt(sarray.length)
     def _(i):
         global suma
         suma = suma + sarray[i]
@@ -70,9 +70,9 @@ def compEncryptNeighborDistances(neighborData, datarow, distance_metric):
     dists = sfix.Array(sample_num)
     temp = sfix.Array(feature_num)
 
-    @for_range(sample_num)
+    @for_range_opt(sample_num)
     def _(i):
-        @for_range(feature_num)
+        @for_range_opt(feature_num)
         def _(j):
             temp[j] = (datarow[0][j] - neighborData[i][j]) ** 2
         dists[i] = mpc_math.sqrt(sumArray(temp))
@@ -140,7 +140,7 @@ class RidgeSGD(object):
         def innerProduct(arr1, arr2, length):
             global product 
             product = sfix(0) 
-            @for_range(length)
+            @for_range_opt(length)
             def _(i):
                 global product, counter 
                 product = product + arr1[i] * arr2[i]
@@ -152,7 +152,7 @@ class RidgeSGD(object):
             length = len(arr)
             result = sfix.Array(length)
             counter = 0
-            @for_range(length)
+            @for_range_parallel(5, length)
             def _(i):
                 result[i] = arr[i] * scalar
 
@@ -164,7 +164,7 @@ class RidgeSGD(object):
             length = len(arr1)
             assert len(arr1)==len(arr2), "In eleArrAdd(), two arrays should have the same lengths! Got {} and {}".format(len(arr1), len(arr2))
             result = sfix.Array(length)
-            @for_range(length)
+            @for_range_parallel(5, length)
             def _(i):
                 result[i] = arr1[i] + arr2[i]
 
@@ -173,7 +173,7 @@ class RidgeSGD(object):
         def assignArray2MatrixRow(matrix, arr, length, base=0):
             # for i in range(length):
             #     matrix[base][i] = arr[i]
-            @for_range(length)
+            @for_range_parallel(5, length)
             def _(i):
                 matrix[base][i] = arr[i]
 
@@ -182,7 +182,7 @@ class RidgeSGD(object):
             global gradients, i, myweights
             myweights = weights
             gradients = sfix.Array(size)
-            @for_range(size)
+            @for_range_parallel(5, size)
             def _(i):
             # for i in range(size):
                 gradients[i] = 1
@@ -254,7 +254,7 @@ class RidgeSGD(object):
             # max_change = sfix(0)
             # max_weight = sfix(0)
             # counter = 0
-            @for_range(n_features)
+            @for_range_parallel(5, n_features)
             def _(i):
             # for i in range(n_features):
                 global max_change, max_weight, weights, previous_weights, counter
@@ -298,7 +298,7 @@ def loadPrivateTrainingData(n_features_lst, class_num, n_samples, class2exp):
         privData[pi].input_from(pi)
 
     # read yss
-    @for_range(n_samples)
+    @for_range_parallel(5, n_samples)
     def _(i):
         yss[i] = privData[0][i][n_features_lst[0]+class2exp]
     # for i in range(n_samples):
