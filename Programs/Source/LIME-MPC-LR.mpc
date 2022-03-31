@@ -1,5 +1,6 @@
 import math
 import random
+import time 
 from typing import Counter
 import numpy as np
 from functools import partial
@@ -321,6 +322,8 @@ def loadPrivateTrainingData(n_features_lst, class_num, n_samples, class2exp):
     return data_row, X, yss
 
 
+start_time = time.time()
+
 print_ln(" ------------------------------ MAIN BODY ------------------------------ ")
 # Program.use_edabit(True)
 # initialize some parameters
@@ -337,6 +340,9 @@ feature_num = sum(n_feature_list)
 neighbor_num = 10
 data_row, X, yss = loadPrivateTrainingData(n_feature_list, class_num=class_num,
                                               n_samples=neighbor_num, class2exp=class2exp)
+
+print_ln("Time of Reading Files: %s s", time.time() - start_time)
+                                              
 # print_ln("data_row: %s", data_row[0].reveal())
 # for i in range(neighbor_num):
 #     print_ln("X[%s]: %s", i, X[i].reveal())
@@ -344,6 +350,7 @@ data_row, X, yss = loadPrivateTrainingData(n_feature_list, class_num=class_num,
 # print_ln("len(X): %s", len(X))
 
 """ kernel """
+start_time = time.time()
 kernel_fn = getKernel(math.sqrt(feature_num) * .75)
 
 """load data for training regressive model"""
@@ -352,9 +359,14 @@ print_ln("distances.length: %s", distances.length)
 
 weights = kernel_fn(distances)  # sfix.Array(sample_num)
 
+print_ln("Time of Computing Weights: %s s", time.time() - start_time)
+
+start_time = time.time()
 ridge = RidgeSGD(alpha=1, fit_intercept=True, max_iter=10, penalty="l2")
 ridge.ridgeSGDFit(X, yss, n_samples=neighbor_num, n_features=feature_num, sample_weight=weights)
 ridge.printFittedModel(feature_num)
+
+print_ln("Time of Fitting Model: %s s", time.time() - start_time)
 
 
 print_ln(" ------------------------------ FINISHED ------------------------------ ")
