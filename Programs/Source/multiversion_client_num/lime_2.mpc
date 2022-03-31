@@ -35,7 +35,7 @@ cfix.set_precision(FIXED_F, FIXED_K)
 ### set necessary parameters
 MAX_ARRAY_SIZE = 100000
 # PORT_NUM = 14000
-MAX_NUM_CLIENTS = 3
+MAX_NUM_CLIENTS = 2
 MAX_NBITS = 14
 NULL = -2147483648
 
@@ -83,7 +83,7 @@ def comp_dist_weights(sample_size, total_feature_num, clients_square_dist):
     sample_weights = Array(MAX_ARRAY_SIZE, sfix)
     sqrt_dists = Array(MAX_ARRAY_SIZE, sfix)
     # step 1: compute sqrt(dist)
-    @for_range_parallel(4, sample_size)
+    @for_range(sample_size)
     def _(i):
         # print_ln("clients_square_dist[i] = %s", clients_square_dist[i].reveal())
         sqrt_dists[i] = mpc_math.sqrt(clients_square_dist[i])
@@ -100,7 +100,7 @@ def comp_dist_weights(sample_size, total_feature_num, clients_square_dist):
     kernel_width[0] = kernel_width[0] * kernel_width[0]
 
     # step 3: compute exponential kernel function
-    @for_range_parallel(4, sample_size)
+    @for_range(sample_size)
     def _(i):
         # w = -(dist * dist); w = w / (kernel_width * kernel_width); w = exp(w); std::sqrt(w);
         sample_weights[i] = 0 - sqrt_dists[i] * sqrt_dists[i]

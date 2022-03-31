@@ -74,7 +74,7 @@ def client_public_parameters(client_socket_id):
 def regularized_comp(client_inputs, array_size):
     result = Array(MAX_ARRAY_SIZE, sfix)
     temp = Array(1, sfix)
-    @for_range(array_size)
+    @for_range_parallel(4, array_size)
     def _(j):
         temp[0] = 0
         @for_range(MAX_NUM_CLIENTS)
