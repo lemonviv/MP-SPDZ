@@ -32,7 +32,7 @@ sfix.set_precision(FIXED_F, FIXED_K)
 cfix.set_precision(FIXED_F, FIXED_K)
 
 ### set necessary parameters
-MAX_ARRAY_SIZE = 100000
+MAX_ARRAY_SIZE = 300000
 MAX_OUTPUT_SIZE = 10
 # PORT_NUM = 14000
 MAX_NUM_CLIENTS = 3
@@ -76,7 +76,7 @@ def logistic_func(inputs, array_size):
     @for_range(array_size)
     def _(j):
         result[j] = ml.sigmoid(inputs[j])
-        # print_ln("The result[j] sigmoid function is %s", result[j].reveal())
+        print_ln("The result[j] sigmoid function is %s", result[j].reveal())
     return result
 
 ### relu activation and derivative func
@@ -163,7 +163,11 @@ def comp_act_deriv(sample_size, num_outputs, act_func_id, clients_act_inputs):
     # logistic activation function
     @if_(act_func_id == 0)
     def _():
-        act_res = logistic_func(clients_act_inputs, input_array_size)
+        # act_res = logistic_func(clients_act_inputs, input_array_size)
+        @for_range(input_array_size)
+        def _(i):
+            act_res[i] = ml.sigmoid(clients_act_inputs[i])
+
         @for_range(input_array_size)
         def _(i):
             act_deriv_res[i] = act_res[i]
@@ -172,12 +176,38 @@ def comp_act_deriv(sample_size, num_outputs, act_func_id, clients_act_inputs):
     # relu activation function
     @if_(act_func_id == 1)
     def _():
-        act_deriv_res = relu_deriv_func(clients_act_inputs, input_array_size)
+        # act_deriv_res = relu_deriv_func(clients_act_inputs, input_array_size)
+        @for_range(input_array_size)
+        def _(i):
+            @if_e(clients_act_inputs[i].reveal() < 0)
+            def _():
+                act_res[i] = 0.0
+            @else_
+            def _():
+                act_res[i] = clients_act_inputs[i]
+
+        @for_range(input_array_size)
+        def _(i):
+            act_deriv_res[i] = act_res[i]
+            @if_e(act_res[i].reveal() == 0)
+            def _():
+                act_deriv_res[i + input_array_size] = 0.0
+            @else_
+            def _():
+                act_deriv_res[i + input_array_size] = 1.0
 
     # identity activation function
     @if_(act_func_id == 2)
     def _():
-        act_deriv_res = identity_deriv_func(clients_act_inputs, input_array_size)
+        # act_deriv_res = identity_deriv_func(clients_act_inputs, input_array_size)
+        @for_range(input_array_size)
+        def _(i):
+            act_res[i] = clients_act_inputs[i]
+
+        @for_range(input_array_size)
+        def _(i):
+            act_deriv_res[i] = act_res[i]
+            act_deriv_res[i + input_array_size] = 1.0
 
     # softmax activation function
     @if_(act_func_id == 3)
@@ -198,21 +228,44 @@ def comp_act(sample_size, num_outputs, act_func_id, clients_act_inputs):
     # logistic activation function
     @if_(act_func_id == 0)
     def _():
-        act_res = logistic_func(clients_act_inputs, input_array_size)
+        print_ln("enter logistic")
+        @for_range(input_array_size)
+        def _(i):
+            print_ln("clients_act_inputs[%s] = %s", i, clients_act_inputs[i].reveal())
+            act_res[i] = ml.sigmoid(clients_act_inputs[i])
+            print_ln("act_res[%s] = %s", i, act_res[i].reveal())
+
+        # act_res = logistic_func(clients_act_inputs, input_array_size)
 
     # relu activation function
     @if_(act_func_id == 1)
     def _():
-        act_res = relu_func(clients_act_inputs, input_array_size)
+        print_ln("enter relu")
+        @for_range(input_array_size)
+        def _(j):
+            @if_e(clients_act_inputs[j].reveal() < 0)
+            def _():
+                act_res[j] = 0.0
+            @else_
+            def _():
+                act_res[j] = clients_act_inputs[j]
+
+        # act_res = relu_func(clients_act_inputs, input_array_size)
 
     # identity activation function
     @if_(act_func_id == 2)
     def _():
-        act_res = identity_func(clients_act_inputs, input_array_size)
+        print_ln("enter identity")
+        @for_range(input_array_size)
+        def _(j):
+            act_res[j] = clients_act_inputs[j]
+
+        # act_res = identity_func(clients_act_inputs, input_array_size)
 
     # softmax activation function
     @if_(act_func_id == 3)
     def _():
+        print_ln("enter softmax")
         act_res = softmax_func(clients_act_inputs, sample_size, num_outputs)
 
     return act_res
@@ -345,9 +398,12 @@ def main():
         @if_(comp_id == 1)
         def _():
             # compute activation and derivative activation
-            act = Array(MAX_ARRAY_SIZE, sfix)
-            act = comp_act(sample_size, num_outputs, act_func_id, clients_act_inputs)
-            write_result_to_clients(client_sockets, MAX_NUM_CLIENTS, act, private_input_size)
+            act_res = sfix.Array(MAX_ARRAY_SIZE)
+            act_res = comp_act(sample_size, num_outputs, act_func_id, clients_act_inputs)
+            # @for_range(private_input_size)
+            # def _(i):
+            #    print_ln("act_res[%s] = %s", i, act_res[i].reveal())
+            write_result_to_clients(client_sockets, MAX_NUM_CLIENTS, act_res, private_input_size)
 
         client_sockets.delete()
         client_values.delete()

@@ -1,0 +1,389 @@
+import math
+import random
+import time
+from typing import Counter
+import numpy as np
+from functools import partial
+from sklearn.utils import check_random_state
+
+from Compiler.types import sint, sfix, MultiArray, cfix
+from Compiler.library import print_ln, for_range, start_timer, stop_timer, multithread, print_ln_if
+from Compiler import mpc_math, ml, program
+from Compiler.program import Program
+
+
+
+def innerProduct(arr1, arr2, length):
+    global product
+    product = sfix(0)
+    @for_range(length)
+    def _(i):
+        global product, counter
+        product = product + arr1[i] * arr2[i]
+    # for i in range(length):
+    #     product = product + arr1[i] * arr2[i]
+    return product
+
+
+def mat_mult(self, mat1, mat2, n_mat1_row, n_mat1_col, n_mat2_row, n_mat2_col):
+    assert n_mat1_col==n_mat2_row, "In mat_mult(), two matrix should be able to multiply! Got {} and {}".format(n_mat1_col, n_mat2_row)
+    result = sfix.Matrix(n_mat1_row, n_mat2_col)
+    @for_range(n_mat1_row)
+    def _(i):
+        @for_range(n_mat2_col)
+        def _(j):
+            result[i][j] = innerProduct(mat1[i], mat2[j], n_mat1_col)
+
+    return result
+
+def eleArrAdd(arr1, arr2):
+    length = len(arr1)
+    assert len(arr1)==len(arr2), "In eleArrAdd(), two arrays should have the same lengths! Got {} and {}".format(len(arr1), len(arr2))
+    result = sfix.Array(length)
+    @for_range(length)
+    def _(i):
+        result[i] = arr1[i] + arr2[i]
+
+    return result
+
+### logistic activation func
+def logistic_func(inputs, array_size):
+    result = Array(MAX_ARRAY_SIZE, sfix)
+    @for_range(array_size)
+    def _(j):
+        result[j] = ml.sigmoid(inputs[j])
+        # print_ln("The result[j] sigmoid function is %s", result[j].reveal())
+    return result
+
+def transpose_mat(mat, n_mat_row, n_mat_col):
+    trans_mat = sfix.Matrix(n_mat_col, n_mat_row)
+    @for_range(n_mat_row)
+    def _(i):
+        @for_range(n_mat_col)
+        def _(j):
+            trans_mat[j][i] = mat[i][j]
+    return trans_mat
+
+def fmax(a, b):
+    # Information has to be passed out via container types
+    res = sfix.Array(1)
+
+    @if_e((a < b).reveal())
+    def _():
+        res[0] = b
+
+    @else_
+    def _():
+        res[0] = a
+
+    return res[0]
+
+def arrDotScalar(arr, scalar):
+    length = len(arr)
+    result = sfix.Array(length)
+    counter = 0
+    @for_range(length)
+    def _(i):
+         result[i] = arr[i] * scalar
+
+    # for i in range(length):
+    #     result[i] = arr[i] * scalar
+    return result
+
+def assignArray2MatrixRow(matrix, arr, length, base=0):
+    # for i in range(length):
+    #     matrix[base][i] = arr[i]
+    @for_range(length)
+    def _(i):
+         matrix[base][i] = arr[i]
+
+def sumArr(arr, length):
+    result = sfix.Array(1)
+    result[0] = 0.0
+    @for_range(length)
+    def _(i):
+        result[0] = result[0] + arr[i]
+    return result[0]
+
+def elewise_mat_mul(mat1, mat2, n_mat1_row, n_mat1_col, n_mat2_row, n_mat2_col):
+    assert n_mat1_row==n_mat2_row, "In mat_mult(), two matrix should be able to elewise multiply! Got {} and {}".format(n_mat1_row, n_mat2_row)
+    assert n_mat1_col==n_mat2_col, "In mat_mult(), two matrix should be able to elewise multiply! Got {} and {}".format(n_mat1_col, n_mat2_col)
+    result = sfix.Matrix(n_mat1_row, n_mat1_col)
+    @for_range(n_mat1_row)
+    def _(i):
+        @for_range(n_mat1_col)
+        def _(j):
+            result[i][j] = mat1[i][j] * mat2[i][j]
+    return result
+
+
+class MLP(object):
+    def __init__(self, hidden_layer_sizes=(100,), activation="logistic", learning_rate=0.01, batch_size=8, alpha=1.0, fit_intercept=True, max_iter=1000, tol=1e-3, penalty="l2"):
+        self.hidden_layer_sizes = hidden_layer_sizes
+        self.activation = activation
+        self.learning_rate=0.01
+        self.batch_size=8
+        self.alpha = alpha
+        self.fit_intercept = fit_intercept
+        self.max_iter = max_iter
+        self.tol = tol
+        self.coefs_ = None
+        self.intercepts_ = None
+        self.n_iter_ = self.max_iter
+        self.penalty = penalty
+        self.n_layers = len(hidden_layer_sizes)
+
+    def expandLabels2d(self, yss, n_samples, n_classes):
+        n_output = n_classes
+        @if_(n_classes == 2)
+        def _():
+            n_output = 1
+        result = sfix.Matrix(n_samples, n_output)
+        @for_range(n_samples)
+        def _(i):
+            @for_range(n_output)
+            def _(j):
+                @if_e(yss[i].reveal() == j)
+                def _():
+                    result[i][j] = 1.0
+                @else_
+                def _():
+                    result[i][j] = 0.0
+
+        return result
+
+    def mlpSGDFit(self, X, y, n_samples, n_features, n_classes):
+        self.coef_, self.intercept_ = self.sag_solver(X, y, n_samples, n_features, n_classes)
+        return self.coef_, self.intercept_
+
+    def printFittedModel(self, n_features):
+        print_ln("to be added")
+
+
+    def forward_pass(self, activations):
+        # iterate over the hidden layers
+        for i in range(n_layers):
+            activations[i + 1] = mat_mult(activations[i], self.coefs_[i])
+            len_row = len(activations[i + 1])
+            len_col = len(activations[i + 1][0])
+
+            @for_range(len_row)
+            def _(j):
+                activations[i + 1][j] = eleArrAdd(activations[i + 1][j], self.intercept_[i])
+
+            # assume currently all are logistic function for the neurons
+            @for_range(len_row)
+            def _(j):
+                activations[i + 1][j] = logistic_func(activations[i + 1][j], len_col)
+
+        return activations
+
+
+    def compute_loss_grad(self, layer, n_samples, activations, deltas, coef_grads, intercept_grads):
+        trans_mat = transpose_mat(activations[layer])
+        coef_grads[layer] = mat_mult(trans_mat, deltas[layer], len(trans_mat), len(trans_mat[0]), len(deltas[layer]), len(deltas[layer][0]))
+        n_row = len(coef_grads[layer])
+        n_col = len(coef_grads[layer][0])
+        @for_range(n_row)
+        def _(i):
+            @for_range(n_col)
+            def _(j):
+                coef_grads[layer][i][j] = coef_grads[layer][i][j] + self.alpha * self.coefs_[layer][i][j]
+                coef_grads[layer][i][j] = coef_grads[layer][i][j] / n_samples
+
+        @for_range(n_col)
+        def _(j):
+            intercept_grads[layer][j] = 0.0
+            @for_range(n_row)
+            def _(i):
+                intercept_grads[layer][j] = intercept_grads[layer][j] + deltas[i][j]
+            intercept_grads[layer][j] /= n_row
+
+        return None
+
+    def compute_last_layer_delta(self, activations, y):
+        n_row = len(activations[-1])
+        n_col = len(activations[-1][0])
+        result = sfix.Matrix(n_row, n_col)
+        @for_range(n_row)
+        def _(i):
+            @for_range(n_col)
+            def _(j):
+                result[i][j] = activations[-1][i][j] - y[i][j]
+        return result
+
+
+
+    def backprop(self, X, y, activations, deltas, coef_grads, intercept_grads):
+        n_samples = len(X)
+        # forward computation
+        activations = self.forward_pass(activations)
+        last = self.n_layers - 2
+
+        # compute the last layer's delta
+        deltas[last] = self.compute_last_layer_delta(activations, y)
+
+        self.compute_loss_grad(last, n_samples, activations, deltas, coef_grads, intercept_grads)
+
+        for i in range(self.n_layers - 2, 0, -1):
+            print_ln("i = %s", i)
+            trans_coefs_i = transpose_mat(self.coefs_[i])
+            deltas[i - 1] = mat_mult(deltas[i], trans_coefs_i, len(deltas[i]), len(deltas[i][0]), len(trans_coefs_i), len(trans_coefs_i[0]))
+            deltas[i - 1] = elewise_mat_mult(deltas[i - 1], activations[i], len(deltas[i - 1]), len(deltas[i - 1][0]), len(activations[i]), len(activations[i][0]))
+
+            self.compute_loss_grad(i - 1, n_samples, activations, deltas, coef_grads, intercept_grads)
+
+        return coef_grads, intercept_grads
+
+    def update_params(self, coef_grads, intercept_grads):
+        # update coefs
+        @for_range(self.n_layers - 1)
+        def _(i):
+            n_row = len(coef_grads[i])
+            n_col = len(coef_grads[i][0])
+            @for_range(n_row)
+            def _(j):
+                @for_range(n_col)
+                def _(k):
+                    self.coefs_[i][j][k] = self.coefs_[i][j][k] - self.learning_rate * coef_grads[i][j][k]
+        # update intercept
+        @for_range(self.n_layers - 1)
+        def _(i):
+            n_intercept_col = len(intercept_grads[i])
+            @for_range(n_intercept_col)
+            def _(k):
+                self.intercepts_[i][k] = self.intercepts_[i][k] - self.learning_rate * intercept_grads[i][k]
+
+    def sag_solver(self, X, y, n_samples, n_features, n_classes):
+        """Takes perturbed data and labels, run mlp training
+            Args:
+                X: perturbed data. sfix.Matrix(n_samples, n_features)
+                y: corresponding perturbed labels. cfix.Array(n_samples)
+                n_samples: number of samples in X. int
+                n_features: number of features. int
+
+            Returns:
+                weights: list of sfix.Matrix(n_fan_in, n_fan_out) where n_fan_in is the layer's #input and n_fan_out is the layer's #output
+                intercept: list of sfix.Array(n_fan_out) where n_fan_out is the layer's #output
+                n_iter: number of epochs. int
+        """
+
+        print_ln(">> sag_solver")
+        print_ln("The max_iter is set to %s", self.max_iter)
+
+        yss = self.expandLabels2d(y, n_samples, n_classes)
+        self.hidden_layer_sizes = (8,)
+        n_outputs = len(yss[0])
+        hidden_layer_sizes = [self.hidden_layer_sizes]
+        layer_units = [n_features] + hidden_layer_sizes + [n_outputs]
+        activations = [X] + [None] * (len(layer_units) - 1)
+        deltas = [None] * (len(activations) - 1)
+        coef_grads = [
+            sfix.Matrix(n_fan_in, n_fan_out)
+            for n_fan_in, n_fan_out in zip(layer_units[:-1], layer_units[1:])
+        ]
+
+        intercept_grads = [
+            sfix.Array(n_fan_out) for n_fan_out in layer_units[1:]
+        ]
+
+        @for_range(self.max_iter)
+        def _(i):
+            print_ln("-------- iteration %s --------", i)
+            rng = np.random.RandomState(77)
+            X_batch = sfix.Matrix(self.batch_size, n_features)
+            y_batch = sfix.Matrix(self.batch_size, n_classes)
+            @for_range(self.batch_size)
+            def _(j):
+                idx = int(rng.rand(1) * n_samples)
+                print_ln("batch idx = %s", idx)
+                @for_range(n_features)
+                def _(k):
+                    X_batch[j][k] = X[idx][k]
+                @for_range(n_classes)
+                def _(c):
+                    y_batch[j][c] = yss[idx][c]
+
+            activations[0] = X_batch
+            coef_grads, intercept_grads = self.backprop(X_batch, y_batch, activations, deltas, coef_grads, intercept_grads)
+            self.update_params(coef_grads, intercept_grads)
+
+
+        print_ln("<< sag_solver")
+        return None, None
+
+
+def resetRandomStates(manualseed=47):
+    random.seed(manualseed)
+    np.random.seed(manualseed)
+
+
+def loadPrivateTrainingData(n_features_lst, class_num, n_samples):
+    # private data for training regressive model
+    print_ln(">> loadPrivateTrainingData")
+    n_features = sum(n_features_lst)
+    n_parties = len(n_features_lst)
+    privData = list()
+    for pi, nf in enumerate(n_features_lst):
+        if pi == 0:
+            privData.append(MultiArray([n_samples, n_features_lst[pi] + class_num], sfix))
+        else:
+            privData.append(MultiArray([n_samples, n_features_lst[pi]], sfix))
+    yss = sfix.Array(n_samples)
+
+    X = MultiArray([n_samples, n_features], sfix)
+
+    for pi in range(n_parties):
+        privData[pi].input_from(pi)
+
+    # read yss
+    @for_range(n_samples)
+    def _(i):
+        yss[i] = privData[0][i][n_features_lst[0]]
+    # for i in range(n_samples):
+    #     yss[i] = privData[0][i][n_features_lst[0]]
+
+    # read X
+    for s in range(n_samples):
+        fCounter = 0
+        for pi, nf in enumerate(n_features_lst):
+            for f in range(nf):
+                X[s][fCounter] = privData[pi][s][f]
+                fCounter += 1
+    print_ln("<< loadPrivateTrainingData")
+    return X, yss
+
+start_timer(timer_id=1)
+print_ln(" ------------------------------ MAIN BODY ------------------------------ ")
+# Program.use_edabit(True)
+# initialize some parameters
+resetRandomStates(manualseed=47)
+
+class_num = 2
+sample_num = 455
+hidden_layer_sizes = (8,)
+
+n_feature_list = [7, 7, 6]
+# n_A_features, n_B_features, n_C_features = n_feature_list
+
+feature_num = sum(n_feature_list)
+
+X, yss = loadPrivateTrainingData(n_feature_list, class_num=class_num, n_samples=sample_num)
+
+stop_timer(timer_id=1)
+# print_ln("data_row: %s", data_row[0].reveal())
+# for i in range(neighbor_num):
+#     print_ln("X[%s]: %s", i, X[i].reveal())
+#     print_ln("yss[%s]: %s", i, yss[i].reveal())
+# print_ln("len(X): %s", len(X))
+
+""" mlp model """
+start_timer(timer_id=2)
+
+mlp = MLP(hidden_layer_sizes=(8,), activation="logistic", learning_rate=0.01, batch_size=8, alpha=1, fit_intercept=True, max_iter=10, penalty="l2")
+mlp.mlpSGDFit(X, yss, n_samples=sample_num, n_features=feature_num, n_classes=class_num)
+
+stop_timer(timer_id=3)
+
+
+print_ln(" ------------------------------ FINISHED ------------------------------ ")
