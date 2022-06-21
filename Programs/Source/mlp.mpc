@@ -212,12 +212,40 @@ def comp_act_deriv(sample_size, num_outputs, act_func_id, clients_act_inputs):
     # softmax activation function
     @if_(act_func_id == 3)
     def _():
-        act_res = softmax_func(clients_act_inputs, sample_size, num_outputs)
+        # act_res = softmax_func(clients_act_inputs, sample_size, num_outputs)
+        @for_range(sample_size)
+        def _(i):
+            temp_softmax_sum = Array(1, sfix)
+            temp_softmax_sum[0] = 0.0
+            temp_softmax_output = Array(MAX_OUTPUT_SIZE, sfix)
+            # compute softmax function
+            @for_range(num_outputs)
+            def _(j):
+                temp_softmax_output[j] = ml.exp(clients_act_inputs[i * num_outputs + j])
+                temp_softmax_sum[0] = temp_softmax_sum[0] + temp_softmax_output[j]
+            # assign new values
+            @for_range(num_outputs)
+            def _(j):
+                act_res[i * num_outputs + j] = temp_softmax_output[j] / temp_softmax_sum[0]
+
+            # @if_(i == 5)
+            # def _():
+            #    print_ln('temp_softmax_sum[0] = %s', temp_softmax_sum[0].reveal())
+            #    print_ln('temp_softmax_output[0] = %s', temp_softmax_output[0].reveal())
+            #    print_ln('temp_softmax_output[1] = %s', temp_softmax_output[1].reveal())
+            #    print_ln('temp_softmax_output[2] = %s', temp_softmax_output[2].reveal())
+            #    print_ln('temp_softmax_output[3] = %s', temp_softmax_output[3].reveal())
+            #    print_ln('temp_softmax_output[4] = %s', temp_softmax_output[4].reveal())
+            #    print_ln('act_res[0] = %s', act_res[i * num_outputs + 0].reveal())
+            #    print_ln('act_res[1] = %s', act_res[i * num_outputs + 1].reveal())
+            #    print_ln('act_res[2] = %s', act_res[i * num_outputs + 2].reveal())
+            #    print_ln('act_res[3] = %s', act_res[i * num_outputs + 3].reveal())
+            #    print_ln('act_res[4] = %s', act_res[i * num_outputs + 4].reveal())
+
         @for_range(input_array_size)
         def _(i):
             act_deriv_res[i] = act_res[i]
-            # derivative use dummy 1.0, will not be used
-            act_deriv_res[i + input_array_size] = 1.0
+            act_deriv_res[i + input_array_size] = act_res[i] * (1 - act_res[i])
 
     return act_deriv_res
 
@@ -231,9 +259,9 @@ def comp_act(sample_size, num_outputs, act_func_id, clients_act_inputs):
         print_ln("enter logistic")
         @for_range(input_array_size)
         def _(i):
-            print_ln("clients_act_inputs[%s] = %s", i, clients_act_inputs[i].reveal())
+            # print_ln("clients_act_inputs[%s] = %s", i, clients_act_inputs[i].reveal())
             act_res[i] = ml.sigmoid(clients_act_inputs[i])
-            print_ln("act_res[%s] = %s", i, act_res[i].reveal())
+            # print_ln("act_res[%s] = %s", i, act_res[i].reveal())
 
         # act_res = logistic_func(clients_act_inputs, input_array_size)
 
@@ -266,7 +294,30 @@ def comp_act(sample_size, num_outputs, act_func_id, clients_act_inputs):
     @if_(act_func_id == 3)
     def _():
         print_ln("enter softmax")
-        act_res = softmax_func(clients_act_inputs, sample_size, num_outputs)
+        @for_range(sample_size)
+        def _(i):
+            temp_softmax_sum = Array(1, sfix)
+            temp_softmax_sum[0] = 0.0
+            temp_softmax_output = Array(MAX_OUTPUT_SIZE, sfix)
+            # compute softmax function
+            @for_range(num_outputs)
+            def _(j):
+                temp_softmax_output[j] = ml.exp(clients_act_inputs[i * num_outputs + j])
+                temp_softmax_sum[0] = temp_softmax_sum[0] + temp_softmax_output[j]
+            # assign new values
+            @for_range(num_outputs)
+            def _(j):
+                act_res[i * num_outputs + j] = temp_softmax_output[j] / temp_softmax_sum[0]
+
+            # @if_(i < 10)
+            # def _():
+            #    print_ln('temp_softmax_sum[0] = %s', temp_softmax_sum[0].reveal())
+            #    print_ln('temp_softmax_output[0] = %s', temp_softmax_output[0].reveal())
+            #    print_ln('temp_softmax_output[1] = %s', temp_softmax_output[1].reveal())
+            #    print_ln('act_res[0] = %s', act_res[0].reveal())
+            #    print_ln('act_res[1] = %s', act_res[1].reveal())
+
+        # act_res = softmax_func(clients_act_inputs, input_array_size, num_outputs)
 
     return act_res
 
