@@ -51,6 +51,12 @@ def close_connections(number_clients):
     def _(i):
         closeclientconnection(i)
 
+# receive computation id
+def client_computation_id(client_socket_id):
+    input_parameters = Array(1, cint)
+    input_parameters = cint.read_from_socket(client_socket_id, 1)
+    return input_parameters[0]
+
 ### Receive private input from client_socket_id
 def client_input(client_sockets, num_clients, array_size):
     client_inputs = sfix.Matrix(MAX_NUM_CLIENTS, MAX_ARRAY_SIZE)
@@ -82,7 +88,30 @@ def logistic_func(client_inputs, array_size):
             temp[0] = temp[0] + client_inputs[i][j]
         #print_ln("The temp[0] is %s", temp[0].reveal())
         result[j] = ml.sigmoid(temp[0])
-        print_ln("The result[j] sigmoid function is %s", result[j].reveal())
+        #print_ln("The result[j] sigmoid function is %s", result[j].reveal())
+    temp.delete()
+    return result
+
+
+
+### Compute the regularized term given the received weights, if w_j > 0, return -1, else, return 1
+def regularized_comp(client_inputs, array_size):
+    result = Array(MAX_ARRAY_SIZE, sfix)
+    temp = Array(1, sfix)
+    @for_range(array_size)
+    def _(j):
+        temp[0] = 0
+        @for_range(MAX_NUM_CLIENTS)
+        def inner(i):
+            temp[0] = temp[0] + client_inputs[i][j]
+        #print_ln("The temp[0] is %s", temp[0].reveal())
+        @if_e (temp[0].reveal() > 0)
+        def _():
+            result[j] = -1.0
+        @else_
+        def _():
+            result[j] = 1.0
+        print_ln("The result[j] counter-sign is %s", result[j].reveal())
     temp.delete()
     return result
 
@@ -174,6 +203,10 @@ def main():
             seen[client_id] = 1
             return sum(seen) < MAX_NUM_CLIENTS
 
+        # receive a computation id and run the designated branch
+        comp_id = client_computation_id(client_sockets[0])
+        print_ln('comp_id = %s', comp_id)
+
         # step 2: receive a public array_size and each client's private input
         array_size = client_public_parameters(client_sockets[0])
         client_values = client_input(client_sockets, MAX_NUM_CLIENTS, array_size)
@@ -187,12 +220,23 @@ def main():
                 client_values[client_id][j] = sfix._new(inputs[j])
         """
 
-        # step 3: compute the logistic function
         result = sfix.Array(MAX_ARRAY_SIZE)
-        result = logistic_func(client_values, array_size)
 
-        # step 4: write values back to the clients
-        write_result_to_clients(client_sockets, MAX_NUM_CLIENTS, result, array_size)
+        # compute logistic func
+        @if_(comp_id == 0)
+        def _():
+            # step 3: compute the logistic function
+            result = logistic_func(client_values, array_size)
+            # step 4: write values back to the clients
+            write_result_to_clients(client_sockets, MAX_NUM_CLIENTS, result, array_size)
+
+        # compute l1 regularization
+        @if_(comp_id == 1)
+        def _():
+            # step 3: compute the l1 regularization
+            result = regularized_comp(client_values, array_size)
+            # step 4: write values back to the clients
+            write_result_to_clients(client_sockets, MAX_NUM_CLIENTS, result, array_size)
 
         client_sockets.delete()
         client_values.delete()
