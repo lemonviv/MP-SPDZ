@@ -3,6 +3,7 @@ import random
 import time
 from typing import Counter
 import numpy as np
+import array as arr
 from functools import partial
 from sklearn.utils import check_random_state
 
@@ -11,7 +12,17 @@ from Compiler.library import print_ln, for_range, start_timer, stop_timer, multi
 from Compiler import mpc_math, ml, program
 from Compiler.program import Program
 
-
+N_LAYER_NEURONS = 128
+BATCH_SIZE = 128
+LAYER_SIZES = arr.array('i', [16, 8, 1])
+#ACTIVATION_FUNCS = arr.array('i', [2, 2])
+#LAYER_SIZES = Array(3)
+#LAYER_SIZES[0] = 16
+#LAYER_SIZES[1] = 8
+#LAYER_SIZES[2] = 1
+#ACTIVATION_FUNCS = cint.Array(2) ### 1: relu, 2: logistic, 3: identity, 4: softmax
+#ACTIVATION_FUNCS[0] = 2
+#ACTIVATION_FUNCS[1] = 2
 
 def innerProduct(arr1, arr2, length):
     global product
@@ -117,8 +128,8 @@ def elewise_mat_mul(mat1, mat2, n_mat1_row, n_mat1_col, n_mat2_row, n_mat2_col):
     return result
 
 
-class MLP(object):
-    def __init__(self, hidden_layer_sizes=(100,), activation="logistic", learning_rate=0.01, batch_size=8, alpha=1.0, fit_intercept=True, max_iter=1000, tol=1e-3, penalty="l2"):
+class MlpSGD(object):
+    def __init__(self, hidden_layer_sizes=(8,), activation="logistic", learning_rate=0.01, batch_size=8, alpha=1.0, fit_intercept=True, max_iter=1000, tol=1e-3, penalty="l2"):
         self.hidden_layer_sizes = hidden_layer_sizes
         self.activation = activation
         self.learning_rate=0.01
@@ -131,7 +142,28 @@ class MLP(object):
         self.intercepts_ = None
         self.n_iter_ = self.max_iter
         self.penalty = penalty
-        self.n_layers = len(hidden_layer_sizes)
+        self.n_layers = len(hidden_layer_sizes) + 2
+
+    def init_params(self):
+        self.coefs_ = MultiArray([self.n_layers - 1, N_LAYER_NEURONS, N_LAYER_NEURONS], sfix)
+        self.intercepts_ = sfix.Matrix(self.n_layers - 1, N_LAYER_NEURONS)
+        @for_range(self.n_layers - 1)
+        def _(i):
+            factor = 2.0
+            init_bound = np.sqrt(factor / (LAYER_SIZES[i] + LAYER_SIZES[i+1]))
+            rng = np.random.RandomState(77)
+            coef_init = rng.uniform(-init_bound, init_bound, (LAYER_SIZES[i], LAYER_SIZES[i+1]))
+            intercept_init = rng.uniform(-init_bound, init_bound, LAYER_SIZES[i+1])
+            @for_range(LAYER_SIZES[i])
+            def _(j):
+                @for_range(LAYER_SIZES[i+1])
+                def _(k):
+                    self.coefs_[i][j][k] = coef_init[j][k]
+
+            @for_range(LAYER_SIZES[i+1])
+            def _(k):
+                self.intercepts_[i][k] = intercept_init[k]
+
 
     def expandLabels2d(self, yss, n_samples, n_classes):
         n_output = n_classes
@@ -162,7 +194,7 @@ class MLP(object):
 
     def forward_pass(self, activations):
         # iterate over the hidden layers
-        for i in range(n_layers):
+        for i in range(self.n_layers - 1):
             activations[i + 1] = mat_mult(activations[i], self.coefs_[i])
             len_row = len(activations[i + 1])
             len_col = len(activations[i + 1][0])
@@ -211,7 +243,6 @@ class MLP(object):
             def _(j):
                 result[i][j] = activations[-1][i][j] - y[i][j]
         return result
-
 
 
     def backprop(self, X, y, activations, deltas, coef_grads, intercept_grads):
@@ -276,17 +307,7 @@ class MLP(object):
         n_outputs = len(yss[0])
         hidden_layer_sizes = [self.hidden_layer_sizes]
         layer_units = [n_features] + hidden_layer_sizes + [n_outputs]
-        activations = [X] + [None] * (len(layer_units) - 1)
-        deltas = [None] * (len(activations) - 1)
-        coef_grads = [
-            sfix.Matrix(n_fan_in, n_fan_out)
-            for n_fan_in, n_fan_out in zip(layer_units[:-1], layer_units[1:])
-        ]
-
-        intercept_grads = [
-            sfix.Array(n_fan_out) for n_fan_out in layer_units[1:]
-        ]
-
+        self.init_params()
         @for_range(self.max_iter)
         def _(i):
             print_ln("-------- iteration %s --------", i)
@@ -304,8 +325,13 @@ class MLP(object):
                 def _(c):
                     y_batch[j][c] = yss[idx][c]
 
+            activations = MultiArray([self.n_layers + 1, BATCH_SIZE, N_LAYER_NEURONS], sfix)
+            deltas = MultiArray([self.n_layers, BATCH_SIZE, N_LAYER_NEURONS], sfix)
+            coef_grads = MultiArray([self.n_layers - 1, N_LAYER_NEURONS, N_LAYER_NEURONS], sfix)
+            intercept_grads = sfix.Matrix(self.n_layers - 1, N_LAYER_NEURONS)
             activations[0] = X_batch
-            coef_grads, intercept_grads = self.backprop(X_batch, y_batch, activations, deltas, coef_grads, intercept_grads)
+
+            self.backprop(X_batch, y_batch, activations, deltas, coef_grads, intercept_grads)
             self.update_params(coef_grads, intercept_grads)
 
 
@@ -318,7 +344,7 @@ def resetRandomStates(manualseed=47):
     np.random.seed(manualseed)
 
 
-def loadPrivateTrainingData(n_features_lst, class_num, n_samples):
+def loadPrivateTrainingData(n_features_lst, n_samples):
     # private data for training regressive model
     print_ln(">> loadPrivateTrainingData")
     n_features = sum(n_features_lst)
@@ -326,7 +352,7 @@ def loadPrivateTrainingData(n_features_lst, class_num, n_samples):
     privData = list()
     for pi, nf in enumerate(n_features_lst):
         if pi == 0:
-            privData.append(MultiArray([n_samples, n_features_lst[pi] + class_num], sfix))
+            privData.append(MultiArray([n_samples, n_features_lst[pi] + 1], sfix))
         else:
             privData.append(MultiArray([n_samples, n_features_lst[pi]], sfix))
     yss = sfix.Array(n_samples)
@@ -339,9 +365,9 @@ def loadPrivateTrainingData(n_features_lst, class_num, n_samples):
     # read yss
     @for_range(n_samples)
     def _(i):
-        yss[i] = privData[0][i][n_features_lst[0]]
+        yss[i] = privData[0][i][n_features_lst[0]] # the last element is label
     # for i in range(n_samples):
-    #     yss[i] = privData[0][i][n_features_lst[0]]
+    #     yss[i] = privData[0][i][n_features_lst[0]+class2exp]
 
     # read X
     for s in range(n_samples):
@@ -360,15 +386,15 @@ print_ln(" ------------------------------ MAIN BODY ----------------------------
 resetRandomStates(manualseed=47)
 
 class_num = 2
-sample_num = 455
-hidden_layer_sizes = (8,)
 
-n_feature_list = [7, 7, 6]
+n_feature_list = [4, 4, 6]
 # n_A_features, n_B_features, n_C_features = n_feature_list
 
 feature_num = sum(n_feature_list)
 
-X, yss = loadPrivateTrainingData(n_feature_list, class_num=class_num, n_samples=sample_num)
+sample_num = 10
+neighbor_num = 10
+X, yss = loadPrivateTrainingData(n_feature_list, n_samples=sample_num)
 
 stop_timer(timer_id=1)
 # print_ln("data_row: %s", data_row[0].reveal())
@@ -377,13 +403,11 @@ stop_timer(timer_id=1)
 #     print_ln("yss[%s]: %s", i, yss[i].reveal())
 # print_ln("len(X): %s", len(X))
 
-""" mlp model """
-start_timer(timer_id=2)
-
-mlp = MLP(hidden_layer_sizes=(8,), activation="logistic", learning_rate=0.01, batch_size=8, alpha=1, fit_intercept=True, max_iter=10, penalty="l2")
-mlp.mlpSGDFit(X, yss, n_samples=sample_num, n_features=feature_num, n_classes=class_num)
+start_timer(timer_id=3)
+mlp = MlpSGD(alpha=1, fit_intercept=True, max_iter=188, penalty="l2")
+mlp.mlpSGDFit(X, yss, n_samples=neighbor_num, n_features=feature_num, n_classes=class_num)
+mlp.printFittedModel(feature_num)
 
 stop_timer(timer_id=3)
-
 
 print_ln(" ------------------------------ FINISHED ------------------------------ ")
