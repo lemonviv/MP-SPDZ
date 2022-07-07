@@ -126,7 +126,7 @@ def elewise_mat_mult(mat1, mat2, n_mat1_row, n_mat1_col, n_mat2_row, n_mat2_col)
 
 
 class MlpSGD(object):
-    def __init__(self, hidden_layer_sizes=(8,), activation="logistic", learning_rate=0.01, batch_size=8, alpha=1.0, fit_intercept=True, max_iter=1, tol=1e-3, penalty="l2"):
+    def __init__(self, hidden_layer_sizes=(8,), activation="logistic", learning_rate=0.01, batch_size=8, alpha=1.0, fit_intercept=True, max_iter=3, tol=1e-3, penalty="l2"):
         self.hidden_layer_sizes = hidden_layer_sizes
         self.activation = activation
         self.learning_rate=0.01
@@ -195,13 +195,14 @@ class MlpSGD(object):
             print_ln("batch_size = %s", self.batch_size)
 
             # resulted matrix should be dim = (self.batch_size, layer_arr[i+1])
+            # resulted matrix should be dim = (self.batch_size, layer_arr[i+1])
             activations[i + 1] = mat_mult(activations[i], self.coefs_[i], self.batch_size, layer_arr[i], layer_arr[i], layer_arr[i+1])
 
             @for_range(self.batch_size)
             def _(j):
                 activations[i + 1][j] = eleArrAdd(activations[i + 1][j], self.intercepts_[i])
 
-            # assume currently all are logistic function for the neurons
+            # assume currently all are logistic function / relu for the neurons
             @for_range(self.batch_size)
             def _(j):
                 @for_range(layer_arr[i+1])
@@ -243,7 +244,7 @@ class MlpSGD(object):
             def _(i):
                 intercept_grads[layer][j] = intercept_grads[layer][j] + deltas[layer][i][j]
             intercept_grads[layer][j] /= n_samples
-            print_ln("intercept_grads element = %s", intercept_grads[layer][j].reveal())
+            # print_ln("intercept_grads element = %s", intercept_grads[layer][j].reveal())
 
         return activations, deltas, coef_grads, intercept_grads
 
@@ -253,10 +254,10 @@ class MlpSGD(object):
         def _(i):
             @for_range(layer_arr[-1])
             def _(j):
-                print_ln("[compute_last_layer_delta] activations[-1][i][j] = %s", activations[-1][i][j].reveal())
-                print_ln("[compute_last_layer_delta] y[i][j] = %s", y[i][j].reveal())
+                # print_ln("[compute_last_layer_delta] activations[-1][i][j] = %s", activations[-1][i][j].reveal())
+                # print_ln("[compute_last_layer_delta] y[i][j] = %s", y[i][j].reveal())
                 result[i][j] = activations[-1][i][j] - y[i][j]
-                print_ln("result element = %s", result[i][j].reveal())
+                # print_ln("result element = %s", result[i][j].reveal())
         return result
 
 
@@ -327,7 +328,7 @@ class MlpSGD(object):
             # n_intercept_col = len(intercept_grads[i])
             @for_range(layer_arr[i+1])
             def _(k):
-                print_ln("--- intercept_grads = %s ---", intercept_grads[i][k].reveal())
+                # print_ln("--- intercept_grads = %s ---", intercept_grads[i][k].reveal())
                 self.intercepts_[i][k] = self.intercepts_[i][k] - self.learning_rate * intercept_grads[i][k]
 
     def sag_solver(self, X, y, n_samples, n_features, n_classes):
@@ -364,7 +365,7 @@ class MlpSGD(object):
             @for_range(self.batch_size)
             def _(i):
                 idx = int(rng.rand(1) * n_samples)
-                print_ln("batch idx = %s", idx)
+                # print_ln("batch idx = %s", idx)
                 @for_range(n_features)
                 def _(j):
                     X_batch[i][j] = X[idx][j]
@@ -452,7 +453,7 @@ stop_timer(timer_id=1)
 # print_ln("len(X): %s", len(X))
 
 start_timer(timer_id=3)
-mlp = MlpSGD(alpha=1, fit_intercept=True, max_iter=1, penalty="l2")
+mlp = MlpSGD(alpha=1, fit_intercept=True, max_iter=3, penalty="l2")
 mlp.mlpSGDFit(X, yss, n_samples=neighbor_num, n_features=feature_num, n_classes=class_num)
 mlp.printFittedModel(feature_num)
 
