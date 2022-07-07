@@ -213,38 +213,41 @@ class RidgeSGD(object):
         step_size = 1. / L
         stop_flag = 0
         iterCounter = 0
-        # for epoch in range(max_iter):
-        while(True):
+        for epoch in range(max_iter):
+        # while(True):
+            dummy = X[0]
+            dummy_gradient = sfix(0)
             for k in range(n_samples):
                 idx = int(rng.rand(1) * n_samples)
                 entry = X[idx]
                 seen.add(idx)
                 p = innerProduct(entry, weights, n_features) + intercept  # inner product of 1-D arrays
                 gradient = p - y[idx]
+                agg = arrDotScalar(entry, gradient)
                 if sample_weight is not None:
                     gradient = gradient * sample_weight[idx]
-                if penalty == "l2":
-                    update = eleArrAdd(arrDotScalar(entry, gradient), arrDotScalar(weights, alpha_scaled))
-                elif penalty == "l1":
-                    l1gradients = l1Gradients(weights)
-                    update = eleArrAdd(arrDotScalar(entry, gradient), arrDotScalar(l1gradients, alpha_scaled))
-                gradient_correction = eleArrAdd(update, arrDotScalar(gradient_memory[idx], -1))
-                sum_gradient = eleArrAdd(sum_gradient, gradient_correction)
-                assignArray2MatrixRow(gradient_memory, update, n_features, base=idx)
+            if penalty == "l2":
+                update = eleArrAdd(arrDotScalar(entry, gradient), arrDotScalar(weights, alpha_scaled))
+            elif penalty == "l1":
+                l1gradients = l1Gradients(weights)
+                update = eleArrAdd(arrDotScalar(entry, gradient), arrDotScalar(l1gradients, alpha_scaled))
+            gradient_correction = eleArrAdd(update, arrDotScalar(gradient_memory[idx], -1))
+            sum_gradient = eleArrAdd(sum_gradient, gradient_correction)
+            assignArray2MatrixRow(gradient_memory, update, n_features, base=idx)
 
-                if fit_intercept:
-                    gradient_correction = (gradient - intercept_gradient_memory[idx])
-                    intercept_gradient_memory[idx] = gradient
-                    intercept_sum_gradient = intercept_sum_gradient + gradient_correction
+            if fit_intercept:
+                gradient_correction = (gradient - intercept_gradient_memory[idx])
+                intercept_gradient_memory[idx] = gradient
+                intercept_sum_gradient = intercept_sum_gradient + gradient_correction
 
-                    intercept = intercept - (intercept_sum_gradient * (step_size / len(seen) * intercept_decay))
+                intercept = intercept - (intercept_sum_gradient * (step_size / len(seen) * intercept_decay))
 
-                # weights = weights - sum_gradient * (step_size / len(seen))
-                weights = eleArrAdd(weights, arrDotScalar(sum_gradient, - step_size / len(seen)))
-                iterCounter += 1
-                if iterCounter > max_iter:
-                    stop_flag = 1
-                    break
+            # weights = weights - sum_gradient * (step_size / len(seen))
+            weights = eleArrAdd(weights, arrDotScalar(sum_gradient, - step_size / len(seen)))
+            iterCounter += 1
+            if iterCounter > max_iter:
+                stop_flag = 1
+                break
 
             if stop_flag:
                 break
