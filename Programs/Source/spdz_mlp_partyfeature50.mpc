@@ -15,7 +15,7 @@ from Compiler.program import Program
 N_LAYER_NEURONS = 128
 BATCH_SIZE = 128
 
-layer_arr = [62, 8, 1]
+layer_arr = [152, 8, 1]
 
 # ACTIVATION_FUNCS = Array(2) ### 1: relu, 2: logistic, 3: identity, 4: softmax
 # ACTIVATION_FUNCS[0] = 2
@@ -435,7 +435,7 @@ resetRandomStates(manualseed=47)
 
 class_num = 2
 
-n_feature_list = [22, 20, 20]
+n_feature_list = [52, 50, 50]
 # n_A_features, n_B_features, n_C_features = n_feature_list
 
 feature_num = sum(n_feature_list)

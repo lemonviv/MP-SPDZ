@@ -1,0 +1,298 @@
+import math
+import random
+import time
+from typing import Counter
+import numpy as np
+from functools import partial
+from sklearn.utils import check_random_state
+
+from Compiler.types import sint, sfix, MultiArray, cfix
+from Compiler.library import print_ln, for_range, start_timer, stop_timer, multithread, print_ln_if
+from Compiler import mpc_math, ml, program
+from Compiler.program import Program
+
+
+def assign2Dnparr2Container(nparr, container):
+    """ Convert a np.array to a MultiArray or Matrix
+
+    """
+    x, y = nparr.shape
+    for i in range(x):
+        for j in range(y):
+            container[i][j] = nparr[i][j]
+
+def sumArray(sarray):
+    global suma
+    suma = sfix(0)
+    @for_range(sarray.length)
+    def _(i):
+        global suma
+        suma = suma + sarray[i]
+
+    # for i in sarray:
+    #     suma = suma + i
+    return suma
+
+
+class LogisticSGD(object):
+    def __init__(self, alpha=1.0, fit_intercept=True, max_iter=3, tol=1e-3, penalty="l2"):
+        self.alpha = alpha
+        self.fit_intercept = fit_intercept
+        self.max_iter = max_iter
+        self.tol = tol
+        self.coef_ = None
+        self.intercept_ = None
+        self.n_iter_ = self.max_iter
+        self.penalty = penalty
+
+    def logisticSGDFit(self, X, y, n_samples, n_features):
+        self.coef_, self.intercept_ = self.sag_solver(X, y, n_samples, n_features, self.fit_intercept,
+                                                                    self.alpha, max_iter=self.max_iter,
+                                                                    tol=self.tol, penalty=self.penalty)
+        return self.coef_, self.intercept_
+
+    def printFittedModel(self, n_features):
+        for i in range(n_features):
+            print_ln("coef[%s]: %s", i, self.coef_[i].reveal())
+        print_ln("intercept: %s", self.intercept_.reveal())
+        print_ln("n_iter: %s", self.n_iter_)
+
+    def sag_solver(self, X, y, n_samples, n_features, fit_intercept=True, alpha=1., max_iter=3,
+                   tol=0.001, penalty="l2"):
+        """Takes perturbed data, labels and distances, returns explanation.
+            Args:
+                X: perturbed data. sfix.Matrix(n_samples, n_features)
+                y: corresponding perturbed labels. cfix.Array(n_samples)
+                n_samples: number of samples in X. int
+                n_features: number of features. int
+
+            Returns:
+                weights: sfix.Array(n_features)
+                intercept: sfix
+                n_iter: number of epochs. int
+        """
+        def fmax(a, b):
+            # Information has to be passed out via container types
+            res = sfix.Array(1)
+
+            @if_e((a < b).reveal())
+            def _():
+                res[0] = b
+
+            @else_
+            def _():
+                res[0] = a
+
+            return res[0]
+
+        def innerProduct(arr1, arr2, length):
+            global product
+            product = sfix(0)
+            @for_range(length)
+            def _(i):
+                global product, counter
+                product = product + arr1[i] * arr2[i]
+            # for i in range(length):
+            #     product = product + arr1[i] * arr2[i]
+            return product
+
+        def arrDotScalar(arr, scalar):
+            length = len(arr)
+            result = sfix.Array(length)
+            counter = 0
+            @for_range(length)
+            def _(i):
+                result[i] = arr[i] * scalar
+
+            # for i in range(length):
+            #     result[i] = arr[i] * scalar
+            return result
+
+        def eleArrAdd(arr1, arr2):
+            length = len(arr1)
+            assert len(arr1)==len(arr2), "In eleArrAdd(), two arrays should have the same lengths! Got {} and {}".format(len(arr1), len(arr2))
+            result = sfix.Array(length)
+            @for_range(length)
+            def _(i):
+                result[i] = arr1[i] + arr2[i]
+
+            return result
+
+        def assignArray2MatrixRow(matrix, arr, length, base=0):
+            # for i in range(length):
+            #     matrix[base][i] = arr[i]
+            @for_range(length)
+            def _(i):
+                matrix[base][i] = arr[i]
+
+        def l1Gradients(weights):
+            size = len(weights)
+            global gradients, i, myweights
+            myweights = weights
+            gradients = sfix.Array(size)
+            @for_range(size)
+            def _(i):
+            # for i in range(size):
+                gradients[i] = 1
+                @if_((myweights[i] < 0).reveal())
+                def _():
+                    gradients[i] = -1
+            return gradients
+
+        print_ln(">> sag_solver")
+        print_ln("The max_iter is set to %s", max_iter)
+
+        # As in SGD, the alpha is scaled by n_samples.
+        alpha_scaled = float(alpha) / n_samples
+
+        global weights, previous_weights
+        weights = sfix.Array(n_features)
+        previous_weights = sfix.Array(n_features)
+        sum_gradient = sfix.Array(n_features)
+        gradient_memory = MultiArray([n_samples, n_features], sfix)
+        intercept = sfix(0)
+        intercept_sum_gradient = sfix(0)
+        intercept_decay = 1.0
+        intercept_gradient_memory = sfix.Array(n_samples)
+        seen = set()
+        rng = np.random.RandomState(77)
+        max_squared_sum = 20  # to be defined
+        L = max_squared_sum + int(fit_intercept) + alpha_scaled
+        step_size = 1. / L
+        stop_flag = 0
+        iterCounter = 0
+        for epoch in range(max_iter):
+        # while(True):
+            dummy = X[0]
+            dummy_gradient = sfix(0)
+            for k in range(n_samples):
+                idx = int(rng.rand(1) * n_samples)
+                entry = X[idx]
+                seen.add(idx)
+                p = innerProduct(entry, weights, n_features) + intercept  # inner product of 1-D arrays
+                q = ml.sigmoid(p)
+                gradient = q - y[idx]
+                agg = arrDotScalar(entry, gradient)
+            if penalty == "l2":
+                update = eleArrAdd(dummy, arrDotScalar(weights, alpha_scaled))
+            elif penalty == "l1":
+                l1gradients = l1Gradients(weights)
+                update = eleArrAdd(dummy, arrDotScalar(l1gradients, alpha_scaled))
+            gradient_correction = eleArrAdd(update, arrDotScalar(gradient_memory[idx], -1))
+            sum_gradient = eleArrAdd(sum_gradient, gradient_correction)
+            assignArray2MatrixRow(gradient_memory, update, n_features, base=idx)
+
+            if fit_intercept:
+                gradient_correction = (dummy_gradient - intercept_gradient_memory[idx])
+                intercept_gradient_memory[idx] = dummy_gradient
+                intercept_sum_gradient = intercept_sum_gradient + gradient_correction
+
+                intercept = intercept - (intercept_sum_gradient * (step_size / len(seen) * intercept_decay))
+
+            # weights = weights - sum_gradient * (step_size / len(seen))
+            weights = eleArrAdd(weights, arrDotScalar(sum_gradient, - step_size / len(seen)))
+            iterCounter += 1
+            if iterCounter > max_iter:
+                stop_flag = 1
+                break
+
+            if stop_flag:
+                break
+
+            # The iterations will stop when max(change in weights) / max(weights) < tol.
+            # global max_change, max_weight, counter
+            # max_change = sfix(0)
+            # max_weight = sfix(0)
+            # counter = 0
+            @for_range(n_features)
+            def _(i):
+            # for i in range(n_features):
+                global max_change, max_weight, weights, previous_weights, counter
+                # max_weight = fmax(max_weight, abs(weights[counter]))
+                # max_change = fmax(max_change, abs(weights[counter] - previous_weights[counter]))
+                previous_weights[i] = weights[i]
+                # counter = counter + 1
+
+            # if (max_weight != 0 and max_change/max_weight <= tol) or (max_weight == 0 and max_change ==0):
+            # @if_((max_change / max_weight <= tol).reveal())
+            # def _():
+            #     global stop_flag
+            #     stop_flag = 1
+        print_ln("%s iterations are used for SGD.", iterCounter-1)
+        print_ln("<< sag_solver")
+        return weights, intercept
+
+
+def resetRandomStates(manualseed=47):
+    random.seed(manualseed)
+    np.random.seed(manualseed)
+
+
+def loadPrivateTrainingData(n_features_lst, n_samples):
+    # private data for training regressive model
+    print_ln(">> loadPrivateTrainingData")
+    n_features = sum(n_features_lst)
+    n_parties = len(n_features_lst)
+    privData = list()
+    for pi, nf in enumerate(n_features_lst):
+        if pi == 0:
+            privData.append(MultiArray([n_samples, n_features_lst[pi] + 1], sfix))
+        else:
+            privData.append(MultiArray([n_samples, n_features_lst[pi]], sfix))
+    yss = sfix.Array(n_samples)
+
+    X = MultiArray([n_samples, n_features], sfix)
+
+    for pi in range(n_parties):
+        privData[pi].input_from(pi)
+
+    # read yss
+    @for_range(n_samples)
+    def _(i):
+        yss[i] = privData[0][i][n_features_lst[0]] # the last element is label
+    # for i in range(n_samples):
+    #     yss[i] = privData[0][i][n_features_lst[0]+class2exp]
+
+    # read X
+    for s in range(n_samples):
+        fCounter = 0
+        for pi, nf in enumerate(n_features_lst):
+            for f in range(nf):
+                X[s][fCounter] = privData[pi][s][f]
+                fCounter += 1
+    print_ln("<< loadPrivateTrainingData")
+    return X, yss
+
+start_timer(timer_id=1)
+print_ln(" ------------------------------ MAIN BODY ------------------------------ ")
+# Program.use_edabit(True)
+# initialize some parameters
+resetRandomStates(manualseed=47)
+
+class_num = 2
+
+n_feature_list = [22, 20, 20, 20]
+# n_A_features, n_B_features, n_C_features = n_feature_list
+
+feature_num = sum(n_feature_list)
+
+sample_num = 10000
+neighbor_num = 128
+X, yss = loadPrivateTrainingData(n_feature_list, n_samples=sample_num)
+
+stop_timer(timer_id=1)
+# print_ln("data_row: %s", data_row[0].reveal())
+# for i in range(neighbor_num):
+#     print_ln("X[%s]: %s", i, X[i].reveal())
+#     print_ln("yss[%s]: %s", i, yss[i].reveal())
+# print_ln("len(X): %s", len(X))
+
+start_timer(timer_id=3)
+logist = LogisticSGD(alpha=1, fit_intercept=True, max_iter=3, penalty="l2")
+logist.logisticSGDFit(X, yss, n_samples=neighbor_num, n_features=feature_num)
+logist.printFittedModel(feature_num)
+
+stop_timer(timer_id=3)
+
+
+print_ln(" ------------------------------ FINISHED ------------------------------ ")
