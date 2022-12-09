@@ -4,7 +4,7 @@
 
   Specifically, this program does in three steps:
   (1) First, keep waiting enough clients (equals to party_num) connected to this program.
-  (2) Second, once enough clients connected, read the input values and compute the logistic function.
+  (2) Second, once enough clients connected, read the input values and compute the lime function.
   (3) Third, return the gfp results (in the secret shared form) to the clients.
 
   Need to set the following parameters before running:
@@ -70,7 +70,7 @@ def client_input(client_sockets, num_clients, array_size):
             client_inputs[i][j] = sfix._new(tmp_array[0])
     return client_inputs
 
-### receive client 0's public parameters for dist weight
+### receive client 0 , active party's public parameters for dist weight
 def dist_weights_public(client_socket_id):
     sample_size_arr = Array(1, cint)
     total_feature_num_arr = Array(1, cint)
@@ -82,7 +82,8 @@ def dist_weights_public(client_socket_id):
 def comp_dist_weights(sample_size, total_feature_num, clients_square_dist):
     sample_weights = Array(MAX_ARRAY_SIZE, sfix)
     sqrt_dists = Array(MAX_ARRAY_SIZE, sfix)
-    # step 1: compute sqrt(dist)
+    # step 1: compute sqrt(dist),
+    # clients_square_dist store the plain test of distance between each sample-pair (with original one)
     @for_range(sample_size)
     def _(i):
         # print_ln("clients_square_dist[i] = %s", clients_square_dist[i].reveal())
@@ -191,19 +192,21 @@ def main():
             client_id = accept_client()
             @if_(client_id >= MAX_NUM_CLIENTS)
             def _():
-                print_ln('client id too high')
+                print_ln('client id is out of default MAX_NUM_CLIENTS in MPC')
                 crash()
             client_sockets[client_id] = client_id
             seen[client_id] = 1
             return sum(seen) < MAX_NUM_CLIENTS
 
-        # receive a computation id and run the designated branch
+        # receive a computation id and run the designated branch,
+        # since only active party send the comp_id, 0-th is the active party's id
         comp_id = client_computation_id(client_sockets[0])
         print_ln('comp_id = %s', comp_id)
 
         # if compute sample weights
         @if_(comp_id == 0)
         def _():
+            # since only active party send the public values to spdz parties, client_sockets[0] is active party
             sample_size, total_feature_num = dist_weights_public(client_sockets[0])
             # receive clients' input private values
             clients_square_dist = sfix.Array(MAX_ARRAY_SIZE)
@@ -223,11 +226,53 @@ def main():
             sample_weights = comp_dist_weights(sample_size, total_feature_num, clients_square_dist)
             write_result_to_clients(client_sockets, MAX_NUM_CLIENTS, sample_weights, sample_size)
 
-        # if compute pearson coefficients
+        # if compute pearson, <mean_y> / <mean_sum>
         @if_(comp_id == 1)
         def _():
-            # to be done
-            print_ln("not implemented")
+            # receive clients' input private values, mean_y and mean_sum
+            private_input_vec = sfix.Array(2)
+            # init mean_y
+            private_input_vec[0] = 0
+            # init mean_sum
+            private_input_vec[1] = 0
+
+            # receive client requests
+            client_values = client_input(client_sockets, MAX_NUM_CLIENTS, 2)
+
+            @for_range(MAX_NUM_CLIENTS)
+            def _(client_id):
+                private_input_vec[0] = private_input_vec[0] + client_values[client_id][0]
+                private_input_vec[1] = private_input_vec[1] + client_values[client_id][1]
+
+            # compute <mean_y> / <mean_sum> and return
+            mean_value = Array(1, sfix)
+            mean_value[0] = private_input_vec[0] / private_input_vec[1]
+            write_result_to_clients(client_sockets, MAX_NUM_CLIENTS, mean_value, 1)
+
+        # if compute pearson, <p> /( <q1> * <q2>)
+        @if_(comp_id == 2)
+        def _():
+
+            # receive clients' input private values, <p>, <q1> and <q2>
+            private_input_vec = sfix.Array(3)
+            # init them
+            private_input_vec[0] = 0
+            private_input_vec[1] = 0
+            private_input_vec[2] = 0
+
+            # receive client requests, and convert back to plaintext
+            client_values = client_input(client_sockets, MAX_NUM_CLIENTS, 3)
+            @for_range(MAX_NUM_CLIENTS)
+            def _(client_id):
+                private_input_vec[0] = private_input_vec[0] + client_values[client_id][0]
+                private_input_vec[1] = private_input_vec[1] + client_values[client_id][1]
+                private_input_vec[2] = private_input_vec[2] + client_values[client_id][2]
+
+            # compute <mean_y> / <mean_sum> and return
+            wpcc_value = Array(1, sfix)
+            wpcc_value[0] = private_input_vec[0] / \
+                            (mpc_math.sqrt(private_input_vec[1]) * mpc_math.sqrt(private_input_vec[2]))
+            write_result_to_clients(client_sockets, MAX_NUM_CLIENTS, wpcc_value, 1)
 
         client_sockets.delete()
         client_values.delete()
