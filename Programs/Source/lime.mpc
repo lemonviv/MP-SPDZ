@@ -229,6 +229,7 @@ def main():
         # if compute pearson, <mean_y> / <mean_sum>
         @if_(comp_id == 1)
         def _():
+            print_ln("Begin to compute the mean value")
             # receive clients' input private values, mean_y and mean_sum
             private_input_vec = sfix.Array(2)
             # init mean_y
@@ -252,7 +253,7 @@ def main():
         # if compute pearson, <p> /( <q1> * <q2>)
         @if_(comp_id == 2)
         def _():
-
+            print_ln("Begin to compute the mean value")
             # receive clients' input private values, <p>, <q1> and <q2>
             private_input_vec = sfix.Array(3)
             # init them
