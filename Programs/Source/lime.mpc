@@ -248,9 +248,7 @@ def main():
             # compute <mean_y> / <mean_sum> and return
             mean_value = Array(1, sfix)
             mean_value[0] = private_input_vec[0] / private_input_vec[1]
-            print_ln("[MPC]: weighted_sum_res = %s", private_input_vec[0])
-            print_ln("[MPC]: sum of weight = %s", private_input_vec[1])
-            print_ln("[MPC]: mean_value = %s and return to client ", mean_value[0])
+            print_ln("[MPC]: mean_value and return to client ")
             write_result_to_clients(client_sockets, MAX_NUM_CLIENTS, mean_value, 1)
 
         # if compute pearson, <p> /( <q1> * <q2>)
@@ -276,9 +274,6 @@ def main():
             wpcc_value = Array(1, sfix)
             wpcc_value[0] = private_input_vec[0] / \
                             (mpc_math.sqrt(private_input_vec[1]) * mpc_math.sqrt(private_input_vec[2]))
-            print_ln("[MPC]: Sum(<p>) = %s", private_input_vec[0])
-            print_ln("[MPC]: Sum(<q1>) = %s", private_input_vec[1])
-            print_ln("[MPC]: Sum(<q2>) = %s ", private_input_vec[2])
             print_ln("[MPC]: Return all to clients")
             write_result_to_clients(client_sockets, MAX_NUM_CLIENTS, wpcc_value, 1)
 
