@@ -44,7 +44,7 @@ PORT_NUM = public_input()
 ### Accept client connections
 def accept_client():
     client_socket_id = accept_client_connection(PORT_NUM)
-    # print_ln("The client socket id is %s", client_socket_id)
+    # print_ln("[MPC]: The client socket id is %s", client_socket_id)
     return client_socket_id
 
 def close_connections(number_clients):
@@ -86,10 +86,10 @@ def comp_dist_weights(sample_size, total_feature_num, clients_square_dist):
     # clients_square_dist store the plain test of distance between each sample-pair (with original one)
     @for_range(sample_size)
     def _(i):
-        # print_ln("clients_square_dist[i] = %s", clients_square_dist[i].reveal())
+        # print_ln("[MPC]: clients_square_dist[i] = %s", clients_square_dist[i].reveal())
         sqrt_dists[i] = mpc_math.sqrt(clients_square_dist[i])
 
-    print_ln("total_feature_num = %s", total_feature_num)
+    print_ln("[MPC]: total_feature_num = %s", total_feature_num)
 
     # step 2: compute kernel width = sqrt(total_feature_num) * 0.75
     sfix_total_feature_num = Array(1, sfix)
@@ -121,7 +121,7 @@ def write_result_to_clients(sockets, number_clients, result, array_size):
     @for_range(array_size)
     def _(i):
         sint_result[i] = result[i].v
-        #print_ln('sint_result[%s] = %s', i, sint_result[i].reveal())
+        #print_ln('[MPC]: sint_result[%s] = %s', i, sint_result[i].reveal())
 
     # split sint_result to number_clients parts and send each part to each client
     sint_result_matrix = sint.Matrix(number_clients, MAX_ARRAY_SIZE)
@@ -145,13 +145,13 @@ def write_result_to_clients(sockets, number_clients, result, array_size):
         def _(j):
             @for_range(number_clients)
             def _(i):
-                print_ln('sint_result_matrix[%s][%s] = %s', i, j, sint_result_matrix[i][j].reveal())
+                print_ln('[MPC]: sint_result_matrix[%s][%s] = %s', i, j, sint_result_matrix[i][j].reveal())
     """
 
-    print_ln('begin to write shares to each client')
+    print_ln('[MPC]: begin to write shares to each client')
     @for_range(number_clients)
     def loop_body(i):
-        # print_ln('socket[%s] = %s', i, sockets[i])
+        # print_ln('[MPC]: socket[%s] = %s', i, sockets[i])
         sint.write_shares_to_socket(sockets[i], sint_result_matrix[i])
 
     sint_result.delete()
@@ -166,12 +166,12 @@ def main():
 
     # Start listening on a port for falcon client socket connections
     listen_for_clients(PORT_NUM)
-    print_ln('Listening for socket connections on base port %s', PORT_NUM)
+    print_ln('[MPC]: Listening for socket connections on base port %s', PORT_NUM)
 
     # Do while loop for iteratively logistic function computation
     @do_while
     def computing_loop():
-        print_ln('Starting a new iteration.')
+        print_ln('[MPC]: Starting a new iteration.')
 
         # Clients socket id (integer).
         client_sockets = Array(MAX_NUM_CLIENTS, regint)
@@ -192,7 +192,7 @@ def main():
             client_id = accept_client()
             @if_(client_id >= MAX_NUM_CLIENTS)
             def _():
-                print_ln('client id is out of default MAX_NUM_CLIENTS in MPC')
+                print_ln('[MPC]: client id is out of default MAX_NUM_CLIENTS in MPC')
                 crash()
             client_sockets[client_id] = client_id
             seen[client_id] = 1
@@ -201,7 +201,7 @@ def main():
         # receive a computation id and run the designated branch,
         # since only active party send the comp_id, 0-th is the active party's id
         comp_id = client_computation_id(client_sockets[0])
-        print_ln('comp_id = %s', comp_id)
+        print_ln('[MPC]: comp_id = %s', comp_id)
 
         # if compute sample weights
         @if_(comp_id == 0)
@@ -229,7 +229,7 @@ def main():
         # if compute pearson, <mean_y> / <mean_sum>
         @if_(comp_id == 1)
         def _():
-            print_ln("Begin to compute the mean value")
+            print_ln("[MPC]: Begin to compute the mean value")
             # receive clients' input private values, mean_y and mean_sum
             private_input_vec = sfix.Array(2)
             # init mean_y
@@ -248,12 +248,15 @@ def main():
             # compute <mean_y> / <mean_sum> and return
             mean_value = Array(1, sfix)
             mean_value[0] = private_input_vec[0] / private_input_vec[1]
+            print_ln("[MPC]: weighted_sum_res = %s", private_input_vec[0])
+            print_ln("[MPC]: sum of weight = %s", private_input_vec[1])
+            print_ln("[MPC]: mean_value = %s and return to client ", mean_value[0])
             write_result_to_clients(client_sockets, MAX_NUM_CLIENTS, mean_value, 1)
 
         # if compute pearson, <p> /( <q1> * <q2>)
         @if_(comp_id == 2)
         def _():
-            print_ln("Begin to compute the mean value")
+            print_ln("[MPC]: Begin to compute the mean value")
             # receive clients' input private values, <p>, <q1> and <q2>
             private_input_vec = sfix.Array(3)
             # init them
@@ -273,6 +276,10 @@ def main():
             wpcc_value = Array(1, sfix)
             wpcc_value[0] = private_input_vec[0] / \
                             (mpc_math.sqrt(private_input_vec[1]) * mpc_math.sqrt(private_input_vec[2]))
+            print_ln("[MPC]: Sum(<p>) = %s", private_input_vec[0])
+            print_ln("[MPC]: Sum(<q1>) = %s", private_input_vec[1])
+            print_ln("[MPC]: Sum(<q2>) = %s ", private_input_vec[2])
+            print_ln("[MPC]: Return all to clients")
             write_result_to_clients(client_sockets, MAX_NUM_CLIENTS, wpcc_value, 1)
 
         client_sockets.delete()
