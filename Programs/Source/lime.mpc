@@ -118,6 +118,24 @@ def comp_dist_weights(sample_size, total_feature_num, clients_square_dist):
 
     return sample_weights
 
+### compute the kernelshap sample weights
+def comp_kernelshap_weights(sample_size, total_feature_num, presented_feature_nums, feature_num_vec, combination_values):
+    # <w> = (d-1) / (C_d^{z} * z * (d - z))
+    # feature_num_index_vec = Array(MAX_ARRAY_SIZE, sfix)
+    # @for_range(total_feature_num)
+    # def _(i):
+    #    feature_num_vec[i] = i * 1.0
+    sample_weights = Array(MAX_ARRAY_SIZE, sfix)
+    # TODO: need to check kernelshap weight implementation and update here
+    @for_range(sample_size)
+    def _(i):
+        @for_range(total_feature_num)
+        def _(j):
+            @if_((presented_feature_nums[i] == feature_num_vec[j]).reveal())
+            def _():
+                sample_weights[i] = combination_values[j]
+    return sample_weights
+
 def write_result_to_clients(sockets, number_clients, result, array_size):
     """
         Send secret share of result to all clients.
@@ -167,27 +185,52 @@ def write_result_to_clients(sockets, number_clients, result, array_size):
 
 
 def get_top_k_value(K_value, feature_importance, total_feature_num):
-    top_K_values = sfix.Array(MAX_ARRAY_SIZE)
+    top_k_feature_indexs = sfix.Array(MAX_ARRAY_SIZE)
 
-    # bubbleSort
+    # convert all value to postive
     @for_range(total_feature_num)
     def _(i):
-        @for_range(total_feature_num-i-i)
+        feature_importance[i] = mpc_math.abs_fx(feature_importance[i])
+
+    # init index list
+    feature_index_list = sint.Array(MAX_ARRAY_SIZE)
+    @for_range(total_feature_num)
+    def _(i):
+        print_ln('[MPC]: get the feature i = %s, importance is = %s', i, feature_importance[i].reveal())
+        feature_index_list[i] = i
+
+    # bubbleSort
+    @for_range(total_feature_num-1)
+    def _(i):
+        @for_range(total_feature_num-i-1)
         def _(j):
-            flag = feature_importance[j] - feature_importance[j+1]
-            @if_((flag == 0).reveal())
+            flag = feature_importance[j+1] - feature_importance[j]
+            print_ln('[MPC]: compare i=%s and j=%s,  i > j get  %s', feature_importance[j+1].reveal(), feature_importance[j].reveal(), flag.reveal())
+            @if_((flag > 0).reveal())
             def _():
-                tmp_array = Array(1, sint)
+                # switch feature accordingly
+                tmp_array = Array(1, sfix)
                 tmp_array[0] = feature_importance[j+1]
                 feature_importance[j+1] = feature_importance[j]
                 feature_importance[j] = tmp_array[0]
 
+                # switch feature index accordingly
+                tmp_array_index = Array(1, sint)
+                tmp_array_index[0] = feature_index_list[j+1]
+                feature_index_list[j+1] = feature_index_list[j]
+                feature_index_list[j] = tmp_array_index[0]
+
+    @for_range(total_feature_num)
+    def _(i):
+        print_ln('[MPC]: after sort, %s-th element is %s, index is %s', i, feature_importance[i].reveal(), feature_index_list[i].reveal())
+
     # find the top k
     @for_range(K_value)
     def _(i):
-        top_K_values[i] = feature_importance[i]
+        print_ln('[MPC]: return index is = %s', feature_index_list[i].reveal())
+        top_k_feature_indexs[i] = feature_index_list[i]
 
-    return top_K_values
+    return top_k_feature_indexs
 
 def main():
     """
@@ -286,27 +329,43 @@ def main():
         @if_(comp_id == 2)
         def _():
             print_ln("[MPC]: Begin to compute the mean value")
+            print_ln("[MPC]: test log info")
+            vec_size = cint.read_from_socket(client_sockets[0], 1)
+            print_ln("[MPC]: vec_size = %s", vec_size)
             # receive clients' input private values, <p>, <q1> and <q2>
-            private_input_vec = sfix.Array(3)
+            private_input_p_vec = sfix.Array(MAX_ARRAY_SIZE)
+            private_input_q1_vec = sfix.Array(MAX_ARRAY_SIZE)
+            private_input_q2 = sfix.Array(1)
             # init them
-            private_input_vec[0] = 0
-            private_input_vec[1] = 0
-            private_input_vec[2] = 0
+            @for_range(vec_size)
+            def _(i):
+                private_input_p_vec[i] = 0
+                private_input_q1_vec[i] = 0
+            private_input_q2[0] = 0
 
             # receive client requests, and convert back to plaintext
-            client_values = client_input(client_sockets, MAX_NUM_CLIENTS, 3)
+            client_values = client_input(client_sockets, MAX_NUM_CLIENTS, 2*vec_size+1)
             @for_range(MAX_NUM_CLIENTS)
             def _(client_id):
-                private_input_vec[0] = private_input_vec[0] + client_values[client_id][0]
-                private_input_vec[1] = private_input_vec[1] + client_values[client_id][1]
-                private_input_vec[2] = private_input_vec[2] + client_values[client_id][2]
+                @for_range(vec_size)
+                def _(i):
+                    private_input_p_vec[i] = private_input_p_vec[i] + client_values[client_id][i]
+
+                @for_range(vec_size)
+                def _(i):
+                    private_input_q1_vec[i] = private_input_q1_vec[i] + client_values[client_id][vec_size+i]
+
+                private_input_q2[0] = private_input_q2[0] + client_values[client_id][2*vec_size]
 
             # compute <mean_y> / <mean_sum> and return
-            wpcc_value = Array(1, sfix)
-            wpcc_value[0] = private_input_vec[0] / \
-                            (mpc_math.sqrt(private_input_vec[1]) * mpc_math.sqrt(private_input_vec[2]))
+            wpcc_value = Array(MAX_ARRAY_SIZE, sfix)
+            @for_range(vec_size)
+            def _(i):
+                wpcc_value[i] = private_input_p_vec[i] / \
+                                (mpc_math.sqrt(private_input_q1_vec[i]) * mpc_math.sqrt(private_input_q2[0]))
+
             print_ln("[MPC]: Return all to clients")
-            write_result_to_clients(client_sockets, MAX_NUM_CLIENTS, wpcc_value, 1)
+            write_result_to_clients(client_sockets, MAX_NUM_CLIENTS, wpcc_value, vec_size)
 
         # if compute top k value, return top k feature's index
         @if_(comp_id == 3)
@@ -330,11 +389,46 @@ def main():
                 def _(i):
                     feature_importance[i] = feature_importance[i] + client_values[client_id][i]
 
-            top_K_values = get_top_k_value(K_value, feature_importance, total_feature_num)
+            top_k_feature_indexs = get_top_k_value(K_value, feature_importance, total_feature_num)
 
-            print_ln("[MPC]: Return top_K_values to clients")
+            print_ln("[MPC]: Return top_k_feature_indexs to clients")
 
-            write_result_to_clients(client_sockets, MAX_NUM_CLIENTS, top_K_values, K_value)
+            write_result_to_clients(client_sockets, MAX_NUM_CLIENTS, top_k_feature_indexs, K_value)
+
+        # if compute kernelshap sample weights
+        @if_(comp_id == 4)
+        def _():
+            # since only active party send the public values to spdz parties, client_sockets[0] is active party
+            sample_size, total_feature_num = dist_weights_public(client_sockets[0])
+            # receive clients' input private values
+            presented_feature_nums = sfix.Array(MAX_ARRAY_SIZE)
+            feature_num_vec = sfix.Array(MAX_ARRAY_SIZE)
+            combination_values = sfix.Array(MAX_ARRAY_SIZE)
+            # init the values
+            @for_range(sample_size)
+            def _(i):
+                presented_feature_nums[i] = 0
+            @for_range(total_feature_num)
+            def _(i):
+                feature_num_vec[i] = 0
+                combination_values[i] = 0
+            client_values = client_input(client_sockets, MAX_NUM_CLIENTS, sample_size + 2*total_feature_num + 2)
+            @for_range(MAX_NUM_CLIENTS)
+            def _(client_id):
+                @for_range(sample_size)
+                def _(i):
+                    presented_feature_nums[i] = presented_feature_nums[i] + client_values[client_id][i]
+                @for_range(total_feature_num + 1)
+                def _(i):
+                    feature_num_vec[i] = feature_num_vec[i] + client_values[client_id][sample_size+i]
+                    combination_values[i] = combination_values[i] + client_values[client_id][sample_size+total_feature_num+1+i]
+
+            print_ln("[MPC] finish reading the values")
+
+            # compute kernelshap weights and return
+            sample_weights = Array(MAX_ARRAY_SIZE, sfix)
+            sample_weights = comp_kernelshap_weights(sample_size, total_feature_num, presented_feature_nums, feature_num_vec, combination_values)
+            write_result_to_clients(client_sockets, MAX_NUM_CLIENTS, sample_weights, sample_size)
 
         client_sockets.delete()
         client_values.delete()
