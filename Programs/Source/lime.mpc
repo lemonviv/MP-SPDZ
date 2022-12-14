@@ -167,7 +167,14 @@ def write_result_to_clients(sockets, number_clients, result, array_size):
 
 
 def get_top_k_value(K_value, feature_importance, total_feature_num):
-    top_K_values = sfix.Array(MAX_ARRAY_SIZE)
+    top_k_feature_indexs = sfix.Array(MAX_ARRAY_SIZE)
+
+    # init index list
+    feature_index_list = sfix.Array(MAX_ARRAY_SIZE)
+    @for_range(total_feature_num)
+    def _(i):
+        print_ln('[MPC]: init feature index = %s', i)
+        feature_index_list[i] = i
 
     # bubbleSort
     @for_range(total_feature_num)
@@ -177,17 +184,24 @@ def get_top_k_value(K_value, feature_importance, total_feature_num):
             flag = feature_importance[j] - feature_importance[j+1]
             @if_((flag == 0).reveal())
             def _():
+                # switch feature accordingly
                 tmp_array = Array(1, sint)
                 tmp_array[0] = feature_importance[j+1]
                 feature_importance[j+1] = feature_importance[j]
                 feature_importance[j] = tmp_array[0]
 
+                # switch feature index accordingly
+                tmp_array_index = Array(1, sint)
+                tmp_array_index[0] = feature_index_list[j+1]
+                feature_index_list[j+1] = feature_index_list[j]
+                feature_index_list[j] = tmp_array_index[0]
+
     # find the top k
     @for_range(K_value)
     def _(i):
-        top_K_values[i] = feature_importance[i]
+        top_k_feature_indexs[i] = feature_index_list[i]
 
-    return top_K_values
+    return top_k_feature_indexs
 
 def main():
     """
@@ -330,11 +344,11 @@ def main():
                 def _(i):
                     feature_importance[i] = feature_importance[i] + client_values[client_id][i]
 
-            top_K_values = get_top_k_value(K_value, feature_importance, total_feature_num)
+            top_k_feature_indexs = get_top_k_value(K_value, feature_importance, total_feature_num)
 
-            print_ln("[MPC]: Return top_K_values to clients")
+            print_ln("[MPC]: Return top_k_feature_indexs to clients")
 
-            write_result_to_clients(client_sockets, MAX_NUM_CLIENTS, top_K_values, K_value)
+            write_result_to_clients(client_sockets, MAX_NUM_CLIENTS, top_k_feature_indexs, K_value)
 
         client_sockets.delete()
         client_values.delete()
