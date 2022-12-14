@@ -70,6 +70,13 @@ def client_input(client_sockets, num_clients, array_size):
             client_inputs[i][j] = sfix._new(tmp_array[0])
     return client_inputs
 
+def top_k_value_public(client_socket_id):
+    K_value = Array(1, cint)
+    K_value[0] = cint.read_from_socket(client_socket_id, 1)
+    total_feature_num_arr = Array(1, cint)
+    total_feature_num_arr[0] = cint.read_from_socket(client_socket_id, 1)
+    return K_value[0], total_feature_num_arr[0]
+
 ### receive client 0 , active party's public parameters for dist weight
 def dist_weights_public(client_socket_id):
     sample_size_arr = Array(1, cint)
@@ -157,6 +164,30 @@ def write_result_to_clients(sockets, number_clients, result, array_size):
     sint_result.delete()
     sint_result_matrix.delete()
     temp_sum.delete()
+
+
+def get_top_k_value(K_value, feature_importance, total_feature_num):
+    top_K_values = sfix.Array(MAX_ARRAY_SIZE)
+
+    # bubbleSort
+    @for_range(total_feature_num)
+    def _(i):
+        @for_range(total_feature_num-i-i)
+        def _(j):
+            flag = feature_importance[j] - feature_importance[j+1]
+            @if_((flag == 0).reveal())
+            def _():
+                tmp_array = Array(1, sint)
+                tmp_array[0] = feature_importance[j+1]
+                feature_importance[j+1] = feature_importance[j]
+                feature_importance[j] = tmp_array[0]
+
+    # find the top k
+    @for_range(K_value)
+    def _(i):
+        top_K_values[i] = feature_importance[i]
+
+    return top_K_values
 
 def main():
     """
@@ -276,6 +307,34 @@ def main():
                             (mpc_math.sqrt(private_input_vec[1]) * mpc_math.sqrt(private_input_vec[2]))
             print_ln("[MPC]: Return all to clients")
             write_result_to_clients(client_sockets, MAX_NUM_CLIENTS, wpcc_value, 1)
+
+        # if compute top k value, return top k feature's index
+        @if_(comp_id == 3)
+        def _():
+            print_ln("[MPC]: Begin to compare and return top k features ")
+            # 1. receive active's public value, the value of K and total feature number
+            K_value, total_feature_num = top_k_value_public(client_sockets[0])
+            print_ln("[MPC]: 1. Active party already sent the value of K = %s, total_f_n = %s",
+                     K_value, total_feature_num)
+
+            # 2. receive clients' input private values, feature's importance share
+            feature_importance = sfix.Array(MAX_ARRAY_SIZE)
+            # init the values
+            @for_range(total_feature_num)
+            def _(i):
+                feature_importance[i] = 0
+            client_values = client_input(client_sockets, MAX_NUM_CLIENTS, total_feature_num)
+            @for_range(MAX_NUM_CLIENTS)
+            def _(client_id):
+                @for_range(total_feature_num)
+                def _(i):
+                    feature_importance[i] = feature_importance[i] + client_values[client_id][i]
+
+            top_K_values = get_top_k_value(K_value, feature_importance, total_feature_num)
+
+            print_ln("[MPC]: Return top_K_values to clients")
+
+            write_result_to_clients(client_sockets, MAX_NUM_CLIENTS, top_K_values, K_value)
 
         client_sockets.delete()
         client_values.delete()
