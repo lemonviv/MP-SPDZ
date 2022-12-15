@@ -169,23 +169,29 @@ def write_result_to_clients(sockets, number_clients, result, array_size):
 def get_top_k_value(K_value, feature_importance, total_feature_num):
     top_k_feature_indexs = sfix.Array(MAX_ARRAY_SIZE)
 
-    # init index list
-    feature_index_list = sfix.Array(MAX_ARRAY_SIZE)
+    # convert all value to postive
     @for_range(total_feature_num)
     def _(i):
-        print_ln('[MPC]: init feature index = %s', i)
+        feature_importance[i] = mpc_math.abs_fx(feature_importance[i])
+
+    # init index list
+    feature_index_list = sint.Array(MAX_ARRAY_SIZE)
+    @for_range(total_feature_num)
+    def _(i):
+        print_ln('[MPC]: get the feature i = %s, importance is = %s', i, feature_importance[i].reveal())
         feature_index_list[i] = i
 
     # bubbleSort
-    @for_range(total_feature_num)
+    @for_range(total_feature_num-1)
     def _(i):
-        @for_range(total_feature_num-i-i)
+        @for_range(total_feature_num-i-1)
         def _(j):
-            flag = feature_importance[j] - feature_importance[j+1]
-            @if_((flag == 0).reveal())
+            flag = feature_importance[j+1] - feature_importance[j]
+            print_ln('[MPC]: compare i=%s and j=%s,  i > j get  %s', feature_importance[j+1].reveal(), feature_importance[j].reveal(), flag.reveal())
+            @if_((flag > 0).reveal())
             def _():
                 # switch feature accordingly
-                tmp_array = Array(1, sint)
+                tmp_array = Array(1, sfix)
                 tmp_array[0] = feature_importance[j+1]
                 feature_importance[j+1] = feature_importance[j]
                 feature_importance[j] = tmp_array[0]
@@ -196,9 +202,14 @@ def get_top_k_value(K_value, feature_importance, total_feature_num):
                 feature_index_list[j+1] = feature_index_list[j]
                 feature_index_list[j] = tmp_array_index[0]
 
+    @for_range(total_feature_num)
+    def _(i):
+        print_ln('[MPC]: after sort, %s-th element is %s, index is %s', i, feature_importance[i].reveal(), feature_index_list[i].reveal())
+
     # find the top k
     @for_range(K_value)
     def _(i):
+        print_ln('[MPC]: return index is = %s', feature_index_list[i].reveal())
         top_k_feature_indexs[i] = feature_index_list[i]
 
     return top_k_feature_indexs
