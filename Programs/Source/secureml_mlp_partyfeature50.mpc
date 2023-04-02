@@ -12,7 +12,7 @@ from Compiler.library import print_ln, for_range, start_timer, stop_timer, multi
 from Compiler import mpc_math, ml, program
 from Compiler.program import Program
 
-N_LAYER_NEURONS = 128
+N_LAYER_NEURONS = 168
 BATCH_SIZE = 128
 
 layer_arr = [152, 8, 1]
