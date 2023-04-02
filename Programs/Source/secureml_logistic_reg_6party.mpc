@@ -300,7 +300,7 @@ stop_timer(timer_id=1)
 # print_ln("len(X): %s", len(X))
 
 start_timer(timer_id=3)
-logist = LogisticSGD(alpha=1, fit_intercept=True, max_iter=63, penalty="l2")
+logist = LogisticSGD(alpha=1, fit_intercept=True, max_iter=3, penalty="l2")
 logist.logisticSGDFit(X, yss, n_samples=neighbor_num, n_features=feature_num)
 logist.printFittedModel(feature_num)
 
